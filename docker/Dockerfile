@@ -82,15 +82,16 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Build workspace (multiple passes to handle dependency order)
-# Note: -Wno-error needed for older GCC on Jetson Nano
+# Note: -Wno-error flags needed for older GCC 7 on Jetson Nano (Ubuntu 18.04)
+# -Wno-error=pragmas: kobuki_core uses pragmas not recognized by GCC 7
 RUN source /opt/ros/humble/install/setup.bash && \
-    export CXXFLAGS="-Wno-error" && \
+    export CXXFLAGS="-Wno-error -Wno-error=pragmas" && \
     for i in 1 2 3 4 5; do \
         echo "=== Build pass $i ===" && \
-        colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wno-error" --continue-on-error && \
+        colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wno-error -Wno-error=pragmas" --continue-on-error && \
         source install/setup.bash 2>/dev/null || true; \
     done && \
-    colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wno-error" --continue-on-error || true
+    colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wno-error -Wno-error=pragmas" --continue-on-error || true
 
 # Copy local packages (will be mounted, but copy for standalone use)
 COPY src/turtlebot2_description ${ROS_WS}/src/turtlebot2_description

@@ -74,6 +74,10 @@ RUN cd ${ROS_WS}/src && \
 RUN cd ${ROS_WS}/src && \
     git clone -b humble-devel https://github.com/ros/angles.git
 
+# Clone diagnostics packages (required by kobuki_node)
+RUN cd ${ROS_WS}/src && \
+    git clone -b humble https://github.com/ros/diagnostics.git
+
 # Install rosdep dependencies
 RUN apt-get update && \
     source /opt/ros/humble/install/setup.bash && \

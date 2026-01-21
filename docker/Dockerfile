@@ -72,7 +72,7 @@ RUN cd ${ROS_WS}/src && \
 
 # Clone angles package (required by kobuki_node)
 RUN cd ${ROS_WS}/src && \
-    git clone -b humble https://github.com/ros/angles.git
+    git clone -b humble-devel https://github.com/ros/angles.git
 
 # Install rosdep dependencies
 RUN apt-get update && \

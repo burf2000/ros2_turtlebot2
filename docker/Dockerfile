@@ -76,7 +76,7 @@ RUN cd ${ROS_WS}/src && \
 
 # Clone diagnostics packages (required by kobuki_node)
 RUN cd ${ROS_WS}/src && \
-    git clone -b humble https://github.com/ros/diagnostics.git
+    git clone -b ros2-humble https://github.com/ros/diagnostics.git
 
 # Install rosdep dependencies
 RUN apt-get update && \

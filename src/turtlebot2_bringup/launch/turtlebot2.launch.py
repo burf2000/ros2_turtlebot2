@@ -1,10 +1,11 @@
 import os
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, GroupAction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch_ros.actions import Node, PushRosNamespace
+from launch_ros.actions import Node, ComposableNodeContainer
+from launch_ros.descriptions import ComposableNode
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -15,7 +16,6 @@ def generate_launch_description():
 
     # Launch configurations
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
-    namespace = LaunchConfiguration('namespace', default='')
     launch_kobuki = LaunchConfiguration('launch_kobuki', default='true')
     launch_camera = LaunchConfiguration('launch_camera', default='true')
 
@@ -24,12 +24,6 @@ def generate_launch_description():
         'use_sim_time',
         default_value='false',
         description='Use simulation time'
-    )
-
-    declare_namespace = DeclareLaunchArgument(
-        'namespace',
-        default_value='',
-        description='Robot namespace'
     )
 
     declare_launch_kobuki = DeclareLaunchArgument(
@@ -41,7 +35,7 @@ def generate_launch_description():
     declare_launch_camera = DeclareLaunchArgument(
         'launch_camera',
         default_value='true',
-        description='Launch Astra camera'
+        description='Launch Xtion camera'
     )
 
     # Robot State Publisher
@@ -55,7 +49,6 @@ def generate_launch_description():
     )
 
     # Kobuki Base Node
-    # Note: This assumes kobuki_node is installed. If using kobuki_ros, adjust package name.
     kobuki_node = Node(
         condition=IfCondition(launch_kobuki),
         package='kobuki_node',
@@ -72,32 +65,39 @@ def generate_launch_description():
         ]
     )
 
-    # Astra Camera Node
-    # Note: Uses OrbbecSDK_ROS2 package
-    astra_node = Node(
+    # ASUS Xtion Pro Camera using openni2_camera
+    xtion_container = ComposableNodeContainer(
         condition=IfCondition(launch_camera),
-        package='orbbec_camera',
-        executable='orbbec_camera_node',
-        name='camera',
-        output='screen',
-        parameters=[
-            os.path.join(pkg_bringup, 'config', 'astra.yaml'),
-            {'use_sim_time': use_sim_time}
+        name='camera_container',
+        namespace='',
+        package='rclcpp_components',
+        executable='component_container',
+        composable_node_descriptions=[
+            ComposableNode(
+                package='openni2_camera',
+                plugin='openni2_wrapper::OpenNI2Driver',
+                name='camera',
+                parameters=[
+                    os.path.join(pkg_bringup, 'config', 'xtion.yaml'),
+                    {'use_sim_time': use_sim_time}
+                ],
+                remappings=[
+                    ('depth/image_raw', 'camera/depth/image_raw'),
+                    ('depth/camera_info', 'camera/depth/camera_info'),
+                    ('rgb/image_raw', 'camera/rgb/image_raw'),
+                    ('rgb/camera_info', 'camera/rgb/camera_info'),
+                ],
+            ),
         ],
-        remappings=[
-            ('color/image_raw', 'camera/rgb/image_raw'),
-            ('depth/image_raw', 'camera/depth/image_raw'),
-            ('depth/points', 'camera/depth/points'),
-        ]
+        output='screen',
     )
 
     return LaunchDescription([
         declare_use_sim_time,
-        declare_namespace,
         declare_launch_kobuki,
         declare_launch_camera,
 
         robot_state_publisher,
         kobuki_node,
-        astra_node,
+        xtion_container,
     ])

@@ -7,7 +7,7 @@
   <!-- Include component xacros -->
   <xacro:include filename="$(find turtlebot2_description)/urdf/common_properties.urdf.xacro"/>
   <xacro:include filename="$(find turtlebot2_description)/urdf/kobuki.urdf.xacro"/>
-  <xacro:include filename="$(find turtlebot2_description)/urdf/sensors/astra.urdf.xacro"/>
+  <xacro:include filename="$(find turtlebot2_description)/urdf/sensors/xtion.urdf.xacro"/>
 
   <!-- Kobuki Base -->
   <xacro:kobuki/>
@@ -135,9 +135,9 @@
     <child link="camera_mount_link"/>
   </joint>
 
-  <!-- Orbbec Astra Camera -->
-  <xacro:sensor_astra parent="camera_mount_link">
+  <!-- ASUS Xtion Pro Camera -->
+  <xacro:sensor_xtion parent="camera_mount_link">
     <origin xyz="0.02 0.0 0.015" rpy="0 0 0"/>
-  </xacro:sensor_astra>
+  </xacro:sensor_xtion>
 
 </robot>

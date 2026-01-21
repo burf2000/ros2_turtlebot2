@@ -1,0 +1,16 @@
+/**:
+  ros__parameters:
+    # Device settings
+    depth_mode: "640x480@30"
+    color_mode: "640x480@30"
+
+    # Frame IDs
+    depth_frame_id: "camera_depth_optical_frame"
+    rgb_frame_id: "camera_rgb_optical_frame"
+
+    # Enable streams
+    depth_registration: true
+
+    # Auto exposure/white balance
+    auto_exposure: true
+    auto_white_balance: true

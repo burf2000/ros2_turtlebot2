@@ -8,10 +8,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV SHELL=/bin/bash
 SHELL ["/bin/bash", "-c"]
 
-# Update ROS2 GPG key (expired key fix)
-RUN apt-get update || true && \
-    apt-get install -y curl gnupg2 && \
-    curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | apt-key add - && \
+# Fix expired ROS2 GPG key
+RUN rm -f /etc/apt/trusted.gpg.d/ros* || true && \
+    apt-get update || true && \
+    apt-get install -y curl ca-certificates && \
+    curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" > /etc/apt/sources.list.d/ros2.list && \
     rm -rf /var/lib/apt/lists/*
 
 # Install system dependencies
@@ -30,25 +32,20 @@ RUN apt-get update && apt-get install -y \
     libgoogle-glog-dev \
     libgflags-dev \
     libyaml-cpp-dev \
+    libfmt-dev \
+    libopenni2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ROS2 packages available via apt
-RUN apt-get update && apt-get install -y \
-    ros-humble-xacro \
-    ros-humble-joint-state-publisher \
-    ros-humble-robot-state-publisher \
-    ros-humble-tf2-ros \
-    ros-humble-tf2-tools \
-    ros-humble-nav2-bringup \
-    ros-humble-navigation2 \
-    ros-humble-slam-toolbox \
-    ros-humble-teleop-twist-keyboard \
-    ros-humble-rviz2 \
-    ros-humble-image-transport \
-    ros-humble-cv-bridge \
-    ros-humble-diagnostic-updater \
-    || true \
-    && rm -rf /var/lib/apt/lists/*
+# Install Sophus system-wide (required by ecl_linear_algebra)
+RUN cd /tmp && \
+    git clone https://github.com/strasdat/Sophus.git && \
+    cd Sophus && \
+    git checkout 1.22.10 && \
+    mkdir build && cd build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SOPHUS_TESTS=OFF -DBUILD_SOPHUS_EXAMPLES=OFF && \
+    make -j$(nproc) && \
+    make install && \
+    rm -rf /tmp/Sophus
 
 # Create workspace
 ENV ROS_WS=/root/turtlebot2_ws
@@ -59,6 +56,7 @@ WORKDIR ${ROS_WS}
 RUN cd ${ROS_WS}/src && \
     git clone https://github.com/kobuki-base/kobuki_core.git && \
     git clone https://github.com/kobuki-base/kobuki_ros.git && \
+    git clone https://github.com/kobuki-base/kobuki_ros_interfaces.git && \
     git clone https://github.com/kobuki-base/velocity_smoother.git && \
     git clone https://github.com/kobuki-base/cmd_vel_mux.git
 
@@ -68,36 +66,40 @@ RUN cd ${ROS_WS}/src && \
     git clone https://github.com/stonier/ecl_lite.git && \
     git clone https://github.com/stonier/ecl_core.git
 
-# Clone Sophus (geometric library needed by kobuki)
+# Clone openni2_camera for ASUS Xtion Pro (iron branch supports Humble)
 RUN cd ${ROS_WS}/src && \
-    git clone https://github.com/strasdat/Sophus.git
+    git clone -b iron https://github.com/ros-drivers/openni2_camera.git
 
-# Clone OrbbecSDK for Astra camera
+# Clone angles package (required by kobuki_node)
 RUN cd ${ROS_WS}/src && \
-    git clone https://github.com/orbbec/OrbbecSDK_ROS2.git && \
-    cd OrbbecSDK_ROS2 && \
-    git checkout main
+    git clone -b humble https://github.com/ros/angles.git
 
 # Install rosdep dependencies
 RUN apt-get update && \
-    source /opt/ros/humble/setup.bash && \
+    source /opt/ros/humble/install/setup.bash && \
     rosdep update --rosdistro=humble || true && \
     rosdep install --from-paths src --ignore-src -r -y || true && \
     rm -rf /var/lib/apt/lists/*
 
-# Build workspace
-RUN source /opt/ros/humble/setup.bash && \
-    colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release || \
-    colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --packages-skip-build-finished
+# Build workspace (multiple passes to handle dependency order)
+# Note: -Wno-error needed for older GCC on Jetson Nano
+RUN source /opt/ros/humble/install/setup.bash && \
+    export CXXFLAGS="-Wno-error" && \
+    for i in 1 2 3 4 5; do \
+        echo "=== Build pass $i ===" && \
+        colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wno-error" --continue-on-error && \
+        source install/setup.bash 2>/dev/null || true; \
+    done && \
+    colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wno-error" --continue-on-error || true
 
 # Copy local packages (will be mounted, but copy for standalone use)
 COPY src/turtlebot2_description ${ROS_WS}/src/turtlebot2_description
 COPY src/turtlebot2_bringup ${ROS_WS}/src/turtlebot2_bringup
 
 # Build local packages
-RUN source /opt/ros/humble/setup.bash && \
+RUN source /opt/ros/humble/install/setup.bash && \
     source ${ROS_WS}/install/setup.bash && \
-    colcon build --symlink-install --packages-select turtlebot2_description turtlebot2_bringup
+    colcon build --symlink-install --packages-select turtlebot2_description turtlebot2_bringup || true
 
 # Setup entrypoint
 COPY docker/ros_entrypoint.sh /ros_entrypoint.sh

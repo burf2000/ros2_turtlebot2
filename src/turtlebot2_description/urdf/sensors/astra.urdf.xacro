@@ -1,0 +1,91 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!-- Orbbec Astra Camera -->
+  <xacro:macro name="sensor_astra" params="parent *origin">
+
+    <!-- Camera body -->
+    <link name="camera_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.035 0.165 0.030"/>
+        </geometry>
+        <material name="black"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.035 0.165 0.030"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.3"/>
+        <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
+      </inertial>
+    </link>
+
+    <joint name="camera_joint" type="fixed">
+      <xacro:insert_block name="origin"/>
+      <parent link="${parent}"/>
+      <child link="camera_link"/>
+    </joint>
+
+    <!-- RGB Camera Frame -->
+    <link name="camera_rgb_frame"/>
+
+    <joint name="camera_rgb_joint" type="fixed">
+      <origin xyz="0.0 0.045 0.0" rpy="0 0 0"/>
+      <parent link="camera_link"/>
+      <child link="camera_rgb_frame"/>
+    </joint>
+
+    <!-- RGB Optical Frame (Z-forward, X-right, Y-down) -->
+    <link name="camera_rgb_optical_frame"/>
+
+    <joint name="camera_rgb_optical_joint" type="fixed">
+      <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+      <parent link="camera_rgb_frame"/>
+      <child link="camera_rgb_optical_frame"/>
+    </joint>
+
+    <!-- Depth Camera Frame -->
+    <link name="camera_depth_frame"/>
+
+    <joint name="camera_depth_joint" type="fixed">
+      <origin xyz="0.0 0.020 0.0" rpy="0 0 0"/>
+      <parent link="camera_link"/>
+      <child link="camera_depth_frame"/>
+    </joint>
+
+    <!-- Depth Optical Frame (Z-forward, X-right, Y-down) -->
+    <link name="camera_depth_optical_frame"/>
+
+    <joint name="camera_depth_optical_joint" type="fixed">
+      <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+      <parent link="camera_depth_frame"/>
+      <child link="camera_depth_optical_frame"/>
+    </joint>
+
+    <!-- IR Camera Frame -->
+    <link name="camera_ir_frame"/>
+
+    <joint name="camera_ir_joint" type="fixed">
+      <origin xyz="0.0 -0.025 0.0" rpy="0 0 0"/>
+      <parent link="camera_link"/>
+      <child link="camera_ir_frame"/>
+    </joint>
+
+    <!-- IR Optical Frame -->
+    <link name="camera_ir_optical_frame"/>
+
+    <joint name="camera_ir_optical_joint" type="fixed">
+      <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+      <parent link="camera_ir_frame"/>
+      <child link="camera_ir_optical_frame"/>
+    </joint>
+
+  </xacro:macro>
+
+</robot>

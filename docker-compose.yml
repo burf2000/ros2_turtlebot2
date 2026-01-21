@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  turtlebot2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: turtlebot2_humble:latest
+    container_name: turtlebot2
+    privileged: true
+    network_mode: host
+    stdin_open: true
+    tty: true
+    volumes:
+      # Device access
+      - /dev:/dev
+      # Source code mount for development
+      - ./src:/root/turtlebot2_ws/src/local:rw
+      # Persistent data
+      - ./data/maps:/root/maps:rw
+      - ./data/logs:/root/.ros/log:rw
+      # X11 for GUI (rviz, etc)
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      - DISPLAY=${DISPLAY}
+      - ROS_DOMAIN_ID=0
+      - QT_X11_NO_MITSHM=1
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    command: bash
+
+  # Development container - lighter weight, for building/testing
+  turtlebot2-dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    image: turtlebot2_humble_dev:latest
+    container_name: turtlebot2_dev
+    privileged: true
+    network_mode: host
+    stdin_open: true
+    tty: true
+    volumes:
+      - /dev:/dev
+      - ./src:/root/turtlebot2_ws/src/local:rw
+      - ./data/maps:/root/maps:rw
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      - DISPLAY=${DISPLAY}
+      - ROS_DOMAIN_ID=0
+    command: bash
+    profiles:
+      - dev
+
+  # Bringup service - runs the full robot stack
+  bringup:
+    extends:
+      service: turtlebot2
+    container_name: turtlebot2_bringup
+    command: ros2 launch turtlebot2_bringup turtlebot2.launch.py
+    profiles:
+      - run
+
+  # Teleop service
+  teleop:
+    extends:
+      service: turtlebot2
+    container_name: turtlebot2_teleop
+    command: ros2 run teleop_twist_keyboard teleop_twist_keyboard
+    profiles:
+      - teleop
+
+  # SLAM service
+  slam:
+    extends:
+      service: turtlebot2
+    container_name: turtlebot2_slam
+    command: ros2 launch slam_toolbox online_async_launch.py
+    profiles:
+      - slam
+
+  # Navigation service
+  nav2:
+    extends:
+      service: turtlebot2
+    container_name: turtlebot2_nav2
+    command: ros2 launch nav2_bringup bringup_launch.py use_sim_time:=False map:=/root/maps/map.yaml
+    profiles:
+      - nav

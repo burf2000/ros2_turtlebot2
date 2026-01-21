@@ -1,0 +1,31 @@
+# Jetson-specific docker-compose overrides
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.jetson.yml up
+
+version: '3.8'
+
+services:
+  turtlebot2:
+    build:
+      args:
+        # Use Jetson Nano specific base image (JetPack 4.6 / L4T R32.7.1)
+        BASE_IMAGE: dustynv/ros:humble-ros-base-l4t-r32.7.1
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  turtlebot2-dev:
+    build:
+      args:
+        BASE_IMAGE: dustynv/ros:humble-ros-base-l4t-r32.7.1
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all

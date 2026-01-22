@@ -1,9 +1,10 @@
 import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration, Command
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
+import xacro
 
 
 def generate_launch_description():
@@ -16,9 +17,8 @@ def generate_launch_description():
     # Launch arguments
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
 
-    # Process xacro to URDF with package path argument
-    xacro_cmd = f'xacro {urdf_file} pkg_description:={pkg_description}'
-    robot_description = Command([xacro_cmd])
+    # Process xacro to URDF using Python xacro module
+    robot_description = xacro.process_file(urdf_file).toxml()
 
     return LaunchDescription([
         DeclareLaunchArgument(

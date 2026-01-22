@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# Install xacro if not present (for older Docker images)
+if ! command -v xacro &> /dev/null; then
+    pip3 install xacro -q 2>/dev/null || true
+fi
+
 # Source ROS2 setup
 source /opt/ros/humble/install/setup.bash 2>/dev/null || source /opt/ros/humble/setup.bash 2>/dev/null || true
 

@@ -6,43 +6,177 @@ This project provides a complete ROS2 Humble setup for TurtleBot 2 running on NV
 
 - **Compute**: NVIDIA Jetson Nano (4GB)
 - **Mobile Base**: Kobuki (Yujin Robot)
-- **Camera**: Orbbec Astra
+- **Camera**: ASUS Xtion Pro (OpenNI2)
 - **Previous**: Upgraded from NVIDIA TK1 + ROS1
 
-## Quick Start
+## Cold Start Guide
 
-### 1. On the Jetson Nano
+Follow these steps to run the robot from a completely powered-off state.
+
+### Step 1: Hardware Setup
+
+1. Connect the Kobuki base to the Jetson Nano via USB (FTDI cable)
+2. Connect the ASUS Xtion Pro camera to a USB port
+3. Power on the Kobuki base (green LED should light up)
+4. Power on the Jetson Nano
+
+### Step 2: SSH into Jetson Nano
+
+From your development machine:
 
 ```bash
-# Clone this repository
-git clone <your-repo-url> ~/turtlebot2
+ssh burf2000@jetson.local
+# Or use the IP address: ssh burf2000@<jetson-ip>
+```
+
+### Step 3: Verify USB Devices
+
+```bash
+# Check Kobuki is detected (FTDI USB serial)
+lsusb | grep -i "0403:6001"
+
+# Check Xtion camera is detected
+lsusb | grep -i "1d27:0601"
+
+# Should see both devices
+ls /dev/ttyUSB*  # Kobuki serial port
+```
+
+### Step 4: Launch the Robot
+
+```bash
 cd ~/turtlebot2
 
-# Run the Jetson setup script
-./scripts/setup_jetson.sh
-
-# Reboot or log out/in for Docker permissions
+# Run the full robot stack
+docker run --rm -it --privileged --network host \
+  -v /dev:/dev \
+  -v ~/turtlebot2/src/turtlebot2_bringup:/root/turtlebot2_ws/src/turtlebot2_bringup \
+  -v ~/turtlebot2/src/turtlebot2_description:/root/turtlebot2_ws/src/turtlebot2_description \
+  turtlebot2_humble bash -c '
+    source /opt/ros/humble/install/setup.bash && \
+    source /root/turtlebot2_ws/install/setup.bash && \
+    colcon build --symlink-install --packages-select turtlebot2_bringup && \
+    source install/setup.bash && \
+    ros2 launch turtlebot2_bringup turtlebot2.launch.py'
 ```
 
-### 2. Build the Docker Image
+### Step 5: Verify Everything is Working
+
+In a second SSH terminal:
 
 ```bash
-# Build for Jetson
-docker-compose -f docker-compose.yml -f docker-compose.jetson.yml build
+# Enter the running container
+docker exec -it $(docker ps -q) bash
 
-# Or use the helper script
-./scripts/run.sh build
+# Source ROS2
+source /opt/ros/humble/install/setup.bash
+source /root/turtlebot2_ws/install/setup.bash
+
+# List all topics
+ros2 topic list
+
+# Check odometry is publishing
+ros2 topic hz /odom
+
+# Check camera is streaming
+ros2 topic hz /camera/depth/image_raw
+
+# Check battery status
+ros2 topic echo /sensors/battery_state --once
+
+# Make the robot beep (confirms commands work)
+ros2 topic pub --once /commands/sound kobuki_ros_interfaces/msg/Sound "{value: 0}"
 ```
 
-### 3. Run the Robot
+## Quick Reference Commands
+
+### Start Robot (Minimal)
 
 ```bash
-# Start interactive shell
-./scripts/run.sh bash
-
-# Or launch the full robot stack
-./scripts/run.sh bringup
+docker run --rm -it --privileged --network host -v /dev:/dev \
+  -v ~/turtlebot2/src/turtlebot2_bringup:/root/turtlebot2_ws/src/turtlebot2_bringup \
+  turtlebot2_humble bash -c '
+    source /opt/ros/humble/install/setup.bash && \
+    source /root/turtlebot2_ws/install/setup.bash && \
+    ros2 launch turtlebot2_bringup turtlebot2.launch.py'
 ```
+
+### Kobuki Base Only
+
+```bash
+docker run --rm -it --privileged --network host -v /dev:/dev \
+  turtlebot2_humble bash -c '
+    source /opt/ros/humble/install/setup.bash && \
+    source /root/turtlebot2_ws/install/setup.bash && \
+    ros2 run kobuki_node kobuki_ros_node --ros-args -p device_port:=/dev/ttyUSB0'
+```
+
+### Camera Only
+
+```bash
+docker run --rm -it --privileged --network host -v /dev:/dev \
+  turtlebot2_humble bash -c '
+    source /opt/ros/humble/install/setup.bash && \
+    source /root/turtlebot2_ws/install/setup.bash && \
+    ros2 run openni2_camera openni2_camera_driver'
+```
+
+### Interactive Shell
+
+```bash
+docker run --rm -it --privileged --network host -v /dev:/dev \
+  -v ~/turtlebot2/src/turtlebot2_bringup:/root/turtlebot2_ws/src/turtlebot2_bringup \
+  -v ~/turtlebot2/src/turtlebot2_description:/root/turtlebot2_ws/src/turtlebot2_description \
+  turtlebot2_humble bash
+```
+
+## ROS2 Topics
+
+### Kobuki Base Topics
+
+| Topic | Type | Description |
+|-------|------|-------------|
+| `/odom` | nav_msgs/Odometry | Wheel odometry |
+| `/cmd_vel` | geometry_msgs/Twist | Velocity commands |
+| `/joint_states` | sensor_msgs/JointState | Wheel joint states |
+| `/tf` | tf2_msgs/TFMessage | Transform tree |
+| `/sensors/battery_state` | sensor_msgs/BatteryState | Battery voltage/percentage |
+| `/sensors/imu_data` | sensor_msgs/Imu | IMU data |
+| `/sensors/core` | kobuki_ros_interfaces/SensorState | Raw sensor data |
+| `/events/bumper` | kobuki_ros_interfaces/BumperEvent | Bumper events |
+| `/events/cliff` | kobuki_ros_interfaces/CliffEvent | Cliff sensor events |
+| `/commands/sound` | kobuki_ros_interfaces/Sound | Play sounds (0-6) |
+| `/commands/led1` | kobuki_ros_interfaces/Led | LED 1 control |
+| `/commands/led2` | kobuki_ros_interfaces/Led | LED 2 control |
+
+### Camera Topics
+
+| Topic | Type | Description |
+|-------|------|-------------|
+| `/camera/depth/image_raw` | sensor_msgs/Image | Depth image (640x480 @ 30fps) |
+| `/camera/depth/camera_info` | sensor_msgs/CameraInfo | Depth camera calibration |
+| `/camera/rgb/image_raw` | sensor_msgs/Image | RGB image (640x480 @ 30fps) |
+| `/camera/rgb/camera_info` | sensor_msgs/CameraInfo | RGB camera calibration |
+| `/ir/image` | sensor_msgs/Image | Infrared image |
+
+## Launch Arguments
+
+The main launch file supports these arguments:
+
+```bash
+ros2 launch turtlebot2_bringup turtlebot2.launch.py \
+  launch_kobuki:=true \
+  launch_camera:=true \
+  launch_robot_state_publisher:=false \
+  use_sim_time:=false
+```
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `launch_kobuki` | true | Launch Kobuki base driver |
+| `launch_camera` | true | Launch Xtion camera driver |
+| `launch_robot_state_publisher` | false | Launch robot URDF publisher |
+| `use_sim_time` | false | Use simulation time |
 
 ## Project Structure
 
@@ -50,129 +184,38 @@ docker-compose -f docker-compose.yml -f docker-compose.jetson.yml build
 turtlebot2/
 ├── docker/
 │   ├── Dockerfile           # Full image with all dependencies
-│   ├── Dockerfile.dev       # Development image (lighter)
 │   └── ros_entrypoint.sh    # Container entrypoint
 ├── docker-compose.yml       # Main compose file
 ├── docker-compose.jetson.yml # Jetson-specific overrides
-├── scripts/
-│   ├── setup_jetson.sh      # Initial Jetson setup
-│   ├── clone_dependencies.sh # Clone ROS2 packages
-│   ├── build_workspace.sh   # Build ROS2 workspace
-│   ├── run.sh               # Helper run script
-│   └── save_map.sh          # Save SLAM maps
 ├── src/
 │   ├── turtlebot2_description/  # URDF and meshes
 │   │   ├── urdf/
 │   │   │   ├── turtlebot2.urdf.xacro
 │   │   │   ├── kobuki.urdf.xacro
-│   │   │   └── sensors/astra.urdf.xacro
+│   │   │   └── sensors/xtion.urdf.xacro
 │   │   └── launch/
+│   │       └── robot_state_publisher.launch.py
 │   └── turtlebot2_bringup/      # Launch files and configs
 │       ├── launch/
-│       │   ├── turtlebot2.launch.py
-│       │   ├── kobuki.launch.py
-│       │   ├── astra.launch.py
-│       │   ├── slam.launch.py
-│       │   └── nav2.launch.py
+│       │   └── turtlebot2.launch.py
 │       └── config/
-│           ├── kobuki.yaml
-│           ├── astra.yaml
-│           ├── slam_params.yaml
-│           └── nav2_params.yaml
+│           ├── kobuki.yaml      # Kobuki parameters
+│           └── xtion.yaml       # Camera parameters
 └── data/
-    ├── maps/                # Saved maps
-    └── logs/                # ROS logs
+    └── maps/                    # Saved maps
 ```
 
-## Available Commands
+## Building the Docker Image
 
-Using the helper script `./scripts/run.sh`:
-
-| Command | Description |
-|---------|-------------|
-| `bash` | Interactive shell in container |
-| `bringup` | Launch full robot stack |
-| `kobuki` | Launch Kobuki base only |
-| `camera` | Launch Astra camera only |
-| `teleop` | Keyboard teleoperation |
-| `slam` | Start SLAM mapping |
-| `nav` | Start Nav2 navigation |
-| `build` | Build Docker image |
-| `dev` | Development container |
-
-## Usage Examples
-
-### Teleoperation
+If you need to rebuild the Docker image:
 
 ```bash
-# Terminal 1: Launch robot
-./scripts/run.sh bringup
+cd ~/turtlebot2
 
-# Terminal 2: Teleop
-./scripts/run.sh teleop
-```
-
-### SLAM Mapping
-
-```bash
-# Terminal 1: Launch robot
-./scripts/run.sh bringup
-
-# Terminal 2: Launch SLAM
-./scripts/run.sh slam
-
-# Terminal 3: Teleop to drive around
-./scripts/run.sh teleop
-
-# When done mapping:
-./scripts/save_map.sh mymap
-```
-
-### Autonomous Navigation
-
-```bash
-# Launch robot with Nav2 (requires a saved map)
-docker-compose run --rm turtlebot2 \
-    ros2 launch turtlebot2_bringup nav2.launch.py map:=/root/maps/mymap.yaml
-```
-
-## Development
-
-### Building Inside Container
-
-```bash
-# Enter development container
-./scripts/run.sh dev
-
-# Inside container:
-source /opt/ros/humble/setup.bash
-cd /root/turtlebot2_ws
-
-# Clone dependencies if not already done
-/root/turtlebot2_ws/src/local/scripts/clone_dependencies.sh
-
-# Build
-colcon build --symlink-install
-source install/setup.bash
-```
-
-### Modifying URDF
-
-The robot description is in `src/turtlebot2_description/urdf/`. After modifying:
-
-```bash
-# Rebuild description package
-colcon build --packages-select turtlebot2_description
-
-# Restart robot_state_publisher
-ros2 launch turtlebot2_description robot_state_publisher.launch.py
-```
-
-### Viewing TF Tree
-
-```bash
-ros2 run tf2_tools view_frames
-# Generates frames.pdf
+# Build for Jetson Nano (takes ~1-2 hours)
+docker build -t turtlebot2_humble \
+  --build-arg BASE_IMAGE=dustynv/ros:humble-ros-base-l4t-r32.7.1 \
+  -f docker/Dockerfile .
 ```
 
 ## Troubleshooting
@@ -182,58 +225,79 @@ ros2 run tf2_tools view_frames
 ```bash
 # Check USB connection
 lsusb | grep -i "FTDI"
+# Should show: Future Technology Devices International
 
-# Check device
+# Check device exists
 ls -la /dev/ttyUSB*
 
-# Fix permissions
+# If permission denied:
 sudo chmod 666 /dev/ttyUSB0
 ```
 
-### Astra Camera Issues
+### Xtion Camera Issues
 
 ```bash
-# Check USB
-lsusb | grep -i "Orbbec"
+# Check USB connection
+lsusb | grep -i "1d27"
+# Should show: ASUS Xtion Pro
 
-# Reinstall udev rules
-cd /root/turtlebot2_ws/src/OrbbecSDK_ROS2/orbbec_camera/scripts
-sudo bash install_udev_rules.sh
-sudo udevadm control --reload-rules
-sudo udevadm trigger
+# Test camera detection inside container
+ros2 run openni2_camera list_devices
 
-# Replug USB cable
+# If "USB transfer timeout" errors occur, the standalone driver
+# works better than ComposableNodeContainer (already configured)
 ```
 
-### Performance on Jetson Nano
+### Container Can't Access USB Devices
 
-The original Jetson Nano may be slower. Tips:
-- Reduce camera resolution in `config/astra.yaml`
-- Use `ros-base` instead of `ros-desktop`
-- Monitor with `jtop` (install: `sudo pip3 install jetson-stats`)
-- Disable unused components
-
-### Docker Permission Denied
+Make sure to run with `--privileged` and `-v /dev:/dev`:
 
 ```bash
-sudo usermod -aG docker $USER
-# Log out and back in
+docker run --rm -it --privileged -v /dev:/dev turtlebot2_humble bash
+```
+
+### Check Running Topics
+
+```bash
+# List all active topics
+ros2 topic list
+
+# Check publishing rate
+ros2 topic hz /odom
+ros2 topic hz /camera/depth/image_raw
+
+# View topic data
+ros2 topic echo /sensors/battery_state --once
+```
+
+### View Camera Images (from remote machine)
+
+On a machine with ROS2 and display:
+
+```bash
+# Make sure ROS_DOMAIN_ID matches
+export ROS_DOMAIN_ID=0
+
+# View depth image
+ros2 run rqt_image_view rqt_image_view /camera/depth/image_raw
+
+# View RGB image
+ros2 run rqt_image_view rqt_image_view /camera/rgb/image_raw
 ```
 
 ## Dependencies
 
-The Dockerfile clones these repositories:
+The Docker image includes:
 
-- [kobuki-base/kobuki_ros](https://github.com/kobuki-base/kobuki_ros)
-- [kobuki-base/kobuki_core](https://github.com/kobuki-base/kobuki_core)
-- [stonier/ecl_core](https://github.com/stonier/ecl_core)
-- [stonier/ecl_lite](https://github.com/stonier/ecl_lite)
-- [orbbec/OrbbecSDK_ROS2](https://github.com/orbbec/OrbbecSDK_ROS2)
-- [dusty-nv/jetson-containers](https://github.com/dusty-nv/jetson-containers)
+- [kobuki-base/kobuki_ros](https://github.com/kobuki-base/kobuki_ros) - Kobuki ROS2 driver
+- [kobuki-base/kobuki_core](https://github.com/kobuki-base/kobuki_core) - Kobuki core library
+- [stonier/ecl_core](https://github.com/stonier/ecl_core) - ECL libraries
+- [ros-drivers/openni2_camera](https://github.com/ros-drivers/openni2_camera) - OpenNI2 camera driver
+- [dusty-nv/jetson-containers](https://github.com/dusty-nv/jetson-containers) - Base Jetson image
 
 ## References
 
-- [TurtleBot 2 on ROS2](https://github.com/idorobotics/turtlebot2_ros2)
 - [ROS2 Humble Documentation](https://docs.ros.org/en/humble/)
-- [Nav2 Documentation](https://navigation.ros.org/)
+- [Kobuki Documentation](https://kobuki.readthedocs.io/)
+- [OpenNI2 Camera](https://github.com/ros-drivers/openni2_camera)
 - [Jetson Containers](https://github.com/dusty-nv/jetson-containers)

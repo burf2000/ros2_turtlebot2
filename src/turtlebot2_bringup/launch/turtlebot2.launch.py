@@ -4,8 +4,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch_ros.actions import Node, ComposableNodeContainer
-from launch_ros.descriptions import ComposableNode
+from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -18,6 +17,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     launch_kobuki = LaunchConfiguration('launch_kobuki', default='true')
     launch_camera = LaunchConfiguration('launch_camera', default='true')
+    launch_robot_state_publisher = LaunchConfiguration('launch_robot_state_publisher', default='false')
 
     # Declare launch arguments
     declare_use_sim_time = DeclareLaunchArgument(
@@ -38,11 +38,18 @@ def generate_launch_description():
         description='Launch Xtion camera'
     )
 
-    # Robot State Publisher
+    declare_launch_robot_state_publisher = DeclareLaunchArgument(
+        'launch_robot_state_publisher',
+        default_value='false',
+        description='Launch robot state publisher (requires xacro)'
+    )
+
+    # Robot State Publisher (optional, requires xacro)
     robot_state_publisher = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             pkg_description, '/launch/robot_state_publisher.launch.py'
         ]),
+        condition=IfCondition(launch_robot_state_publisher),
         launch_arguments={
             'use_sim_time': use_sim_time,
         }.items()
@@ -65,39 +72,34 @@ def generate_launch_description():
         ]
     )
 
-    # ASUS Xtion Pro Camera using openni2_camera
-    xtion_container = ComposableNodeContainer(
+    # ASUS Xtion Pro Camera using openni2_camera (standalone node)
+    # Note: Using standalone node instead of ComposableNodeContainer
+    # as the composable approach has USB timeout issues on Jetson Nano
+    xtion_node = Node(
         condition=IfCondition(launch_camera),
-        name='camera_container',
-        namespace='',
-        package='rclcpp_components',
-        executable='component_container',
-        composable_node_descriptions=[
-            ComposableNode(
-                package='openni2_camera',
-                plugin='openni2_wrapper::OpenNI2Driver',
-                name='camera',
-                parameters=[
-                    os.path.join(pkg_bringup, 'config', 'xtion.yaml'),
-                    {'use_sim_time': use_sim_time}
-                ],
-                remappings=[
-                    ('depth/image_raw', 'camera/depth/image_raw'),
-                    ('depth/camera_info', 'camera/depth/camera_info'),
-                    ('rgb/image_raw', 'camera/rgb/image_raw'),
-                    ('rgb/camera_info', 'camera/rgb/camera_info'),
-                ],
-            ),
-        ],
+        package='openni2_camera',
+        executable='openni2_camera_driver',
+        name='camera',
         output='screen',
+        parameters=[
+            os.path.join(pkg_bringup, 'config', 'xtion.yaml'),
+            {'use_sim_time': use_sim_time}
+        ],
+        remappings=[
+            ('depth/image_raw', 'camera/depth/image_raw'),
+            ('depth/camera_info', 'camera/depth/camera_info'),
+            ('rgb/image_raw', 'camera/rgb/image_raw'),
+            ('rgb/camera_info', 'camera/rgb/camera_info'),
+        ],
     )
 
     return LaunchDescription([
         declare_use_sim_time,
         declare_launch_kobuki,
         declare_launch_camera,
+        declare_launch_robot_state_publisher,
 
         robot_state_publisher,
         kobuki_node,
-        xtion_container,
+        xtion_node,
     ])

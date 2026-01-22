@@ -81,6 +81,11 @@ RUN cd ${ROS_WS}/src && \
 RUN cd ${ROS_WS}/src && \
     git clone -b ros2-humble https://github.com/ros/diagnostics.git
 
+# Clone xacro and joint_state_publisher for robot description
+RUN cd ${ROS_WS}/src && \
+    git clone -b ros2 https://github.com/ros/xacro.git && \
+    git clone -b ros2 https://github.com/ros/joint_state_publisher.git
+
 # Install rosdep dependencies
 RUN apt-get update && \
     source /opt/ros/humble/install/setup.bash && \

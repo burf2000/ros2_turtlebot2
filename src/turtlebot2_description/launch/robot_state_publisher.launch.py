@@ -16,8 +16,11 @@ def generate_launch_description():
     # Launch arguments
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
 
-    # Process xacro to URDF
-    robot_description = Command(['xacro ', urdf_file])
+    # Process xacro to URDF with package path argument
+    robot_description = Command([
+        'xacro ', urdf_file,
+        ' pkg_description:=', pkg_description
+    ])
 
     return LaunchDescription([
         DeclareLaunchArgument(

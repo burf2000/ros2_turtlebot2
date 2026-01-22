@@ -3,11 +3,12 @@
 
   <!-- Arguments -->
   <xacro:arg name="robot_namespace" default="/"/>
+  <xacro:arg name="pkg_description" default=""/>
 
   <!-- Include component xacros -->
-  <xacro:include filename="$(find turtlebot2_description)/urdf/common_properties.urdf.xacro"/>
-  <xacro:include filename="$(find turtlebot2_description)/urdf/kobuki.urdf.xacro"/>
-  <xacro:include filename="$(find turtlebot2_description)/urdf/sensors/xtion.urdf.xacro"/>
+  <xacro:include filename="$(arg pkg_description)/urdf/common_properties.urdf.xacro"/>
+  <xacro:include filename="$(arg pkg_description)/urdf/kobuki.urdf.xacro"/>
+  <xacro:include filename="$(arg pkg_description)/urdf/sensors/xtion.urdf.xacro"/>
 
   <!-- Kobuki Base -->
   <xacro:kobuki/>

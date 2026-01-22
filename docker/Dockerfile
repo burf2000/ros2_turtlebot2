@@ -36,6 +36,9 @@ RUN apt-get update && apt-get install -y \
     libopenni2-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Install xacro via pip (needed for URDF processing)
+RUN pip3 install xacro
+
 # Install Sophus system-wide (required by ecl_linear_algebra)
 RUN cd /tmp && \
     git clone https://github.com/strasdat/Sophus.git && \

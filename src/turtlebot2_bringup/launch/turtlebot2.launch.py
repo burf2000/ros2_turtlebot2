@@ -4,7 +4,8 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch_ros.actions import Node
+from launch_ros.actions import ComposableNodeContainer, Node
+from launch_ros.descriptions import ComposableNode
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -67,8 +68,9 @@ def generate_launch_description():
             {'use_sim_time': use_sim_time}
         ],
         remappings=[
-            ('odom', 'odom'),
-            ('cmd_vel', 'cmd_vel'),
+            ('commands/velocity', 'cmd_vel'),
+            ('sensors/imu_data', 'imu'),
+            ('sensors/imu_data_raw', 'imu/raw'),
         ]
     )
 
@@ -93,6 +95,52 @@ def generate_launch_description():
         ],
     )
 
+    # Point cloud generation from depth + RGB using depth_image_proc
+    # (ROS2 openni2_camera does not publish point clouds natively like ROS1)
+    point_cloud_container = ComposableNodeContainer(
+        condition=IfCondition(launch_camera),
+        name='point_cloud_container',
+        namespace='',
+        package='rclcpp_components',
+        executable='component_container',
+        composable_node_descriptions=[
+            ComposableNode(
+                package='depth_image_proc',
+                plugin='depth_image_proc::PointCloudXyzrgbNode',
+                name='point_cloud_xyzrgb',
+                remappings=[
+                    ('rgb/camera_info', 'camera/rgb/camera_info'),
+                    ('rgb/image_rect_color', 'camera/rgb/image_raw'),
+                    ('depth_registered/image_rect', 'camera/depth/image_raw'),
+                    ('points', 'camera/depth/points'),
+                ],
+            ),
+        ],
+        output='screen',
+    )
+
+    # Convert depth image to laser scan for Nav2/SLAM
+    # (TurtleBot 2 has no lidar, so we generate a virtual scan from the Xtion)
+    depthimage_to_laserscan_node = Node(
+        condition=IfCondition(launch_camera),
+        package='depthimage_to_laserscan',
+        executable='depthimage_to_laserscan_node',
+        name='depthimage_to_laserscan',
+        output='screen',
+        parameters=[{
+            'scan_height': 1,
+            'scan_time': 0.033,
+            'range_min': 0.45,
+            'range_max': 8.0,
+            'output_frame_id': 'camera_depth_optical_frame',
+        }],
+        remappings=[
+            ('depth', 'camera/depth/image_raw'),
+            ('depth_camera_info', 'camera/depth/camera_info'),
+            ('scan', 'scan'),
+        ],
+    )
+
     return LaunchDescription([
         declare_use_sim_time,
         declare_launch_kobuki,
@@ -102,4 +150,6 @@ def generate_launch_description():
         robot_state_publisher,
         kobuki_node,
         xtion_node,
+        point_cloud_container,
+        depthimage_to_laserscan_node,
     ])

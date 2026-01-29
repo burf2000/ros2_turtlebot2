@@ -73,6 +73,10 @@ RUN cd ${ROS_WS}/src && \
 RUN cd ${ROS_WS}/src && \
     git clone -b iron https://github.com/ros-drivers/openni2_camera.git
 
+# Clone depthimage_to_laserscan (virtual laser scan from depth camera)
+RUN cd ${ROS_WS}/src && \
+    git clone -b humble https://github.com/ros-perception/depthimage_to_laserscan.git
+
 # Clone angles package (required by kobuki_node)
 RUN cd ${ROS_WS}/src && \
     git clone -b humble-devel https://github.com/ros/angles.git

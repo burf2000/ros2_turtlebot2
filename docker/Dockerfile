@@ -75,7 +75,7 @@ RUN cd ${ROS_WS}/src && \
 
 # Clone depthimage_to_laserscan (virtual laser scan from depth camera)
 RUN cd ${ROS_WS}/src && \
-    git clone -b humble https://github.com/ros-perception/depthimage_to_laserscan.git
+    git clone -b ros2 https://github.com/ros-perception/depthimage_to_laserscan.git
 
 # Clone angles package (required by kobuki_node)
 RUN cd ${ROS_WS}/src && \

@@ -4,15 +4,15 @@
     depth_frame_id: "camera_depth_optical_frame"
     rgb_frame_id: "camera_rgb_optical_frame"
 
-    # Resolution and framerate
-    depth_width: 640
-    depth_height: 480
-    color_width: 640
-    color_height: 480
-    fps: 30
+    # Stream modes (VGA_30Hz, VGA_25Hz, QVGA_25Hz, QVGA_30Hz, QVGA_60Hz, QQVGA_25Hz, QQVGA_30Hz, QQVGA_60Hz)
+    color_mode: "VGA_30Hz"
+    depth_mode: "VGA_30Hz"
 
-    # Enable streams
+    # Synchronise colour and depth streams to share USB bandwidth
+    color_depth_synchronization: true
     depth_registration: true
+
+    # Timing
     use_device_time: true
 
     # Auto exposure/white balance

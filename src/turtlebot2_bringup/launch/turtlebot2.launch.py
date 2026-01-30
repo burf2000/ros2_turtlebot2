@@ -41,7 +41,7 @@ def generate_launch_description():
 
     declare_launch_robot_state_publisher = DeclareLaunchArgument(
         'launch_robot_state_publisher',
-        default_value='false',
+        default_value='true',
         description='Launch robot state publisher (requires xacro)'
     )
 

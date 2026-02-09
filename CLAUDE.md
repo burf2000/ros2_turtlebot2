@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ROS2 Humble TurtleBot 2 stack for NVIDIA Jetson Nano. Runs entirely in Docker using dusty-nv/jetson-containers as the base image. Hardware: Kobuki mobile base + Orbbec Astra depth camera.
+ROS2 Humble TurtleBot 2 stack for NVIDIA Jetson Nano. Runs entirely in Docker using standard Ubuntu 22.04 (no GPU acceleration needed). Hardware: Kobuki mobile base + Orbbec Astra depth camera.
 
 ## Common Commands
 
@@ -44,10 +44,10 @@ ros2 run tf2_tools view_frames
 ## Architecture
 
 ### Docker Setup
-- `docker/Dockerfile` - Full image with all dependencies (Kobuki, ECL, OrbbecSDK, Nav2)
+- `docker/Dockerfile` - Full image with all dependencies (Kobuki, ECL, openni2_camera, Nav2)
 - `docker/Dockerfile.dev` - Lighter development image
 - `docker-compose.yml` - Main compose file with service definitions
-- `docker-compose.jetson.yml` - Jetson-specific overrides (GPU access, runtime)
+- `docker-compose.jetson.yml` - Jetson-specific overrides (same base image, auto-detected by run.sh)
 
 The container mounts `./src` to `/root/turtlebot2_ws/src/local` for live development.
 

@@ -1,5 +1,6 @@
 # Jetson-specific docker-compose overrides
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.jetson.yml up
+# Note: Uses standard Ubuntu 22.04 (no GPU acceleration)
 
 version: '3.8'
 
@@ -7,25 +8,10 @@ services:
   turtlebot2:
     build:
       args:
-        # Use Jetson Nano specific base image (JetPack 4.6 / L4T R32.7.1)
-        BASE_IMAGE: dustynv/ros:humble-ros-base-l4t-r32.7.1
-    runtime: nvidia
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+        # Use standard ROS2 Humble base (Ubuntu 22.04)
+        BASE_IMAGE: ros:humble-ros-base
 
   turtlebot2-dev:
     build:
       args:
-        BASE_IMAGE: dustynv/ros:humble-ros-base-l4t-r32.7.1
-    runtime: nvidia
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
+        BASE_IMAGE: ros:humble-ros-base

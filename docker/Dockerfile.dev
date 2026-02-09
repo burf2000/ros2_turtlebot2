@@ -1,7 +1,7 @@
 # Development Dockerfile - lighter weight, mounts source code
 # Use this for development/testing before building full image
 
-ARG BASE_IMAGE=dustynv/ros:humble-ros-base-l4t-r32.7.1
+ARG BASE_IMAGE=ros:humble-ros-base
 FROM ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive

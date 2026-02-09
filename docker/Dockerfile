@@ -1,20 +1,12 @@
-# TurtleBot 2 ROS2 Humble on Jetson Nano
-# Base image from dusty-nv/jetson-containers
+# TurtleBot 2 ROS2 Humble
+# Standard Ubuntu 22.04 base (no GPU acceleration)
 
-ARG BASE_IMAGE=dustynv/ros:humble-ros-base-l4t-r32.7.1
+ARG BASE_IMAGE=ros:humble-ros-base
 FROM ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV SHELL=/bin/bash
 SHELL ["/bin/bash", "-c"]
-
-# Fix expired ROS2 GPG key
-RUN rm -f /etc/apt/trusted.gpg.d/ros* || true && \
-    apt-get update || true && \
-    apt-get install -y curl ca-certificates && \
-    curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" > /etc/apt/sources.list.d/ros2.list && \
-    rm -rf /var/lib/apt/lists/*
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -98,16 +90,13 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Build workspace (multiple passes to handle dependency order)
-# Note: -Wno-error flags needed for older GCC 7 on Jetson Nano (Ubuntu 18.04)
-# -Wno-error=pragmas: kobuki_core uses pragmas not recognized by GCC 7
 RUN source /opt/ros/humble/install/setup.bash && \
-    export CXXFLAGS="-Wno-error -Wno-error=pragmas" && \
     for i in 1 2 3 4 5; do \
         echo "=== Build pass $i ===" && \
-        colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wno-error -Wno-error=pragmas" --continue-on-error && \
+        colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --continue-on-error && \
         source install/setup.bash 2>/dev/null || true; \
     done && \
-    colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wno-error -Wno-error=pragmas" --continue-on-error || true
+    colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --continue-on-error || true
 
 # Copy local packages (will be mounted, but copy for standalone use)
 COPY src/turtlebot2_description ${ROS_WS}/src/turtlebot2_description

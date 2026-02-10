@@ -56,6 +56,11 @@ case $COMMAND in
         docker-compose $COMPOSE_FILES run --rm turtlebot2 \
             ros2 launch turtlebot2_bringup nav2.launch.py
         ;;
+    desktop)
+        echo "Starting desktop (RViz + teleop)..."
+        docker-compose $COMPOSE_FILES run --rm turtlebot2 \
+            ros2 launch turtlebot2_bringup desktop.launch.py
+        ;;
     build)
         echo "Building Docker image..."
         docker-compose $COMPOSE_FILES build
@@ -65,7 +70,7 @@ case $COMMAND in
         docker-compose $COMPOSE_FILES --profile dev run --rm turtlebot2-dev bash
         ;;
     *)
-        echo "Usage: $0 {bash|bringup|kobuki|camera|teleop|slam|nav|build|dev}"
+        echo "Usage: $0 {bash|bringup|kobuki|camera|teleop|desktop|slam|nav|build|dev}"
         echo ""
         echo "Commands:"
         echo "  bash    - Start interactive shell"
@@ -73,6 +78,7 @@ case $COMMAND in
         echo "  kobuki  - Launch Kobuki base only"
         echo "  camera  - Launch Astra camera only"
         echo "  teleop  - Start keyboard teleop"
+        echo "  desktop - Launch RViz and teleop (desktop side)"
         echo "  slam    - Start SLAM mapping"
         echo "  nav     - Start Nav2 navigation"
         echo "  build   - Build Docker image"

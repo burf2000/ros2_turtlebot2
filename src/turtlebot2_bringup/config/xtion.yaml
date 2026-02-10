@@ -5,8 +5,9 @@
     rgb_frame_id: "camera_rgb_optical_frame"
 
     # Stream modes (VGA_30Hz, VGA_25Hz, QVGA_25Hz, QVGA_30Hz, QVGA_60Hz, QQVGA_25Hz, QQVGA_30Hz, QQVGA_60Hz)
-    color_mode: "VGA_30Hz"
-    depth_mode: "VGA_30Hz"
+    # Using QVGA to reduce USB bandwidth requirements on Jetson Nano
+    color_mode: "QVGA_30Hz"
+    depth_mode: "QVGA_30Hz"
 
     # Synchronise colour and depth streams to share USB bandwidth
     color_depth_synchronization: true

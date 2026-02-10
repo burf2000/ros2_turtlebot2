@@ -90,7 +90,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Build workspace (multiple passes to handle dependency order)
-RUN source /opt/ros/humble/install/setup.bash && \
+RUN source /opt/ros/humble/setup.bash && \
     for i in 1 2 3 4 5; do \
         echo "=== Build pass $i ===" && \
         colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --continue-on-error && \
@@ -103,7 +103,7 @@ COPY src/turtlebot2_description ${ROS_WS}/src/turtlebot2_description
 COPY src/turtlebot2_bringup ${ROS_WS}/src/turtlebot2_bringup
 
 # Build local packages
-RUN source /opt/ros/humble/install/setup.bash && \
+RUN source /opt/ros/humble/setup.bash && \
     source ${ROS_WS}/install/setup.bash && \
     colcon build --symlink-install --packages-select turtlebot2_description turtlebot2_bringup || true
 

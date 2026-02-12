@@ -1,18 +1,23 @@
 # TurtleBot 2 Upgrade Plan: TK1 → Jetson Nano + ROS2 Humble
 
+> **Note**: This is a historical planning document from before the upgrade. The actual
+> implementation kept the ASUS Xtion Pro camera (using openni2_camera driver) rather than
+> switching to Orbbec Astra, and uses standard Ubuntu 22.04 `ros:humble-ros-base` as the
+> Docker base image instead of Jetson-specific images. See README.md for current setup.
+
 ## Overview
 
 Upgrade an existing TurtleBot 2 from:
 - **Current**: Nvidia TK1 + ROS1 + Asus Xtion Pro
-- **Target**: Jetson Nano + ROS2 Humble (via Docker) + Orbbec Astra
+- **Target**: Jetson Nano + ROS2 Humble (via Docker)
 
 ### Hardware Retained
 - Kobuki mobile base (Yujin Robot)
 - TurtleBot 2 frame/structure
+- ASUS Xtion Pro depth camera
 
 ### Hardware Changed
 - **Compute**: TK1 → Jetson Nano (4GB)
-- **Camera**: Asus Xtion Pro → Orbbec Astra
 
 ---
 

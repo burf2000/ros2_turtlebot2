@@ -1,6 +1,6 @@
 # TurtleBot 2 - ROS2 Humble on Jetson Nano
 
-This project provides a complete ROS2 Humble setup for TurtleBot 2 running on NVIDIA Jetson Nano via Docker.
+This project provides a complete ROS2 Humble setup for TurtleBot 2 running on NVIDIA Jetson Nano via Docker (standard Ubuntu 22.04, no GPU acceleration needed).
 
 ## Hardware
 
@@ -47,17 +47,8 @@ ls /dev/ttyUSB*  # Kobuki serial port
 ```bash
 cd ~/turtlebot2
 
-# Run the full robot stack
-docker run --rm -it --privileged --network host \
-  -v /dev:/dev \
-  -v ~/turtlebot2/src/turtlebot2_bringup:/root/turtlebot2_ws/src/turtlebot2_bringup \
-  -v ~/turtlebot2/src/turtlebot2_description:/root/turtlebot2_ws/src/turtlebot2_description \
-  turtlebot2_humble bash -c '
-    source /opt/ros/humble/install/setup.bash && \
-    source /root/turtlebot2_ws/install/setup.bash && \
-    colcon build --symlink-install --packages-select turtlebot2_bringup && \
-    source install/setup.bash && \
-    ros2 launch turtlebot2_bringup turtlebot2.launch.py'
+# Run the full robot stack (Kobuki + Xtion + TF + laser scan + point cloud)
+./scripts/run.sh bringup
 ```
 
 ### Step 5: Verify Everything is Working
@@ -68,10 +59,6 @@ In a second SSH terminal:
 # Enter the running container
 docker exec -it $(docker ps -q) bash
 
-# Source ROS2
-source /opt/ros/humble/install/setup.bash
-source /root/turtlebot2_ws/install/setup.bash
-
 # List all topics
 ros2 topic list
 
@@ -80,6 +67,9 @@ ros2 topic hz /odom
 
 # Check camera is streaming
 ros2 topic hz /camera/depth/image_raw
+
+# Check laser scan (generated from depth camera)
+ros2 topic hz /scan
 
 # Check battery status
 ros2 topic echo /sensors/battery_state --once
@@ -90,44 +80,38 @@ ros2 topic pub --once /commands/sound kobuki_ros_interfaces/msg/Sound "{value: 0
 
 ## Quick Reference Commands
 
-### Start Robot (Minimal)
+All commands use the helper script `./scripts/run.sh`:
 
 ```bash
-docker run --rm -it --privileged --network host -v /dev:/dev \
-  -v ~/turtlebot2/src/turtlebot2_bringup:/root/turtlebot2_ws/src/turtlebot2_bringup \
-  turtlebot2_humble bash -c '
-    source /opt/ros/humble/install/setup.bash && \
-    source /root/turtlebot2_ws/install/setup.bash && \
-    ros2 launch turtlebot2_bringup turtlebot2.launch.py'
-```
+# Interactive shell in container
+./scripts/run.sh bash
 
-### Kobuki Base Only
+# Launch full robot stack
+./scripts/run.sh bringup
 
-```bash
-docker run --rm -it --privileged --network host -v /dev:/dev \
-  turtlebot2_humble bash -c '
-    source /opt/ros/humble/install/setup.bash && \
-    source /root/turtlebot2_ws/install/setup.bash && \
-    ros2 run kobuki_node kobuki_ros_node --ros-args -p device_port:=/dev/ttyUSB0'
-```
+# Launch Kobuki base only
+./scripts/run.sh kobuki
 
-### Camera Only
+# Launch Xtion camera only
+./scripts/run.sh camera
 
-```bash
-docker run --rm -it --privileged --network host -v /dev:/dev \
-  turtlebot2_humble bash -c '
-    source /opt/ros/humble/install/setup.bash && \
-    source /root/turtlebot2_ws/install/setup.bash && \
-    ros2 run openni2_camera openni2_camera_driver'
-```
+# Keyboard teleop
+./scripts/run.sh teleop
 
-### Interactive Shell
+# Desktop (RViz + teleop, run on desktop machine)
+./scripts/run.sh desktop
 
-```bash
-docker run --rm -it --privileged --network host -v /dev:/dev \
-  -v ~/turtlebot2/src/turtlebot2_bringup:/root/turtlebot2_ws/src/turtlebot2_bringup \
-  -v ~/turtlebot2/src/turtlebot2_description:/root/turtlebot2_ws/src/turtlebot2_description \
-  turtlebot2_humble bash
+# SLAM mapping
+./scripts/run.sh slam
+
+# Nav2 navigation
+./scripts/run.sh nav
+
+# Build Docker image
+./scripts/run.sh build
+
+# Development container (lighter weight)
+./scripts/run.sh dev
 ```
 
 ## ROS2 Topics
@@ -141,7 +125,7 @@ docker run --rm -it --privileged --network host -v /dev:/dev \
 | `/joint_states` | sensor_msgs/JointState | Wheel joint states |
 | `/tf` | tf2_msgs/TFMessage | Transform tree |
 | `/sensors/battery_state` | sensor_msgs/BatteryState | Battery voltage/percentage |
-| `/sensors/imu_data` | sensor_msgs/Imu | IMU data |
+| `/imu` | sensor_msgs/Imu | IMU data |
 | `/sensors/core` | kobuki_ros_interfaces/SensorState | Raw sensor data |
 | `/events/bumper` | kobuki_ros_interfaces/BumperEvent | Bumper events |
 | `/events/cliff` | kobuki_ros_interfaces/CliffEvent | Cliff sensor events |
@@ -153,11 +137,17 @@ docker run --rm -it --privileged --network host -v /dev:/dev \
 
 | Topic | Type | Description |
 |-------|------|-------------|
-| `/camera/depth/image_raw` | sensor_msgs/Image | Depth image (640x480 @ 30fps) |
+| `/camera/depth/image_raw` | sensor_msgs/Image | Depth image (320x240 @ 30fps) |
 | `/camera/depth/camera_info` | sensor_msgs/CameraInfo | Depth camera calibration |
-| `/camera/rgb/image_raw` | sensor_msgs/Image | RGB image (640x480 @ 30fps) |
+| `/camera/rgb/image_raw` | sensor_msgs/Image | RGB image (320x240 @ 30fps) |
 | `/camera/rgb/camera_info` | sensor_msgs/CameraInfo | RGB camera calibration |
-| `/ir/image` | sensor_msgs/Image | Infrared image |
+
+### Derived Topics (generated by bringup launch)
+
+| Topic | Type | Description |
+|-------|------|-------------|
+| `/scan` | sensor_msgs/LaserScan | Virtual laser scan from depth image (RELIABLE QoS) |
+| `/camera/depth/points` | sensor_msgs/PointCloud2 | XYZRGB point cloud from depth + RGB |
 
 ## Launch Arguments
 
@@ -167,7 +157,7 @@ The main launch file supports these arguments:
 ros2 launch turtlebot2_bringup turtlebot2.launch.py \
   launch_kobuki:=true \
   launch_camera:=true \
-  launch_robot_state_publisher:=false \
+  launch_robot_state_publisher:=true \
   use_sim_time:=false
 ```
 
@@ -175,50 +165,77 @@ ros2 launch turtlebot2_bringup turtlebot2.launch.py \
 |----------|---------|-------------|
 | `launch_kobuki` | true | Launch Kobuki base driver |
 | `launch_camera` | true | Launch Xtion camera driver |
-| `launch_robot_state_publisher` | false | Launch robot URDF publisher |
+| `launch_robot_state_publisher` | true | Launch robot URDF publisher |
 | `use_sim_time` | false | Use simulation time |
 
 ## Project Structure
 
 ```
 turtlebot2/
+├── scripts/
+│   └── run.sh                     # Helper script for all commands
 ├── docker/
-│   ├── Dockerfile           # Full image with all dependencies
-│   └── ros_entrypoint.sh    # Container entrypoint
-├── docker-compose.yml       # Main compose file
-├── docker-compose.jetson.yml # Jetson-specific overrides
+│   ├── Dockerfile                 # Full image with all dependencies
+│   ├── Dockerfile.dev             # Lighter development image
+│   └── ros_entrypoint.sh         # Container entrypoint
+├── docker-compose.yml             # Main compose file
+├── docker-compose.jetson.yml      # Jetson-specific overrides
 ├── src/
-│   ├── turtlebot2_description/  # URDF and meshes
+│   ├── turtlebot2_description/    # URDF and meshes
 │   │   ├── urdf/
 │   │   │   ├── turtlebot2.urdf.xacro
 │   │   │   ├── kobuki.urdf.xacro
-│   │   │   └── sensors/xtion.urdf.xacro
+│   │   │   └── sensors/
+│   │   │       └── xtion.urdf.xacro    # ASUS Xtion Pro
 │   │   └── launch/
 │   │       └── robot_state_publisher.launch.py
-│   └── turtlebot2_bringup/      # Launch files and configs
+│   └── turtlebot2_bringup/       # Launch files and configs
 │       ├── launch/
-│       │   └── turtlebot2.launch.py
+│       │   ├── turtlebot2.launch.py    # Full bringup
+│       │   ├── kobuki.launch.py        # Kobuki base only
+│       │   ├── astra.launch.py         # Camera only
+│       │   ├── desktop.launch.py       # RViz + teleop (desktop)
+│       │   ├── slam.launch.py          # SLAM Toolbox
+│       │   └── nav2.launch.py          # Nav2 navigation
 │       └── config/
-│           ├── kobuki.yaml      # Kobuki parameters
-│           └── xtion.yaml       # Camera parameters
+│           ├── kobuki.yaml
+│           ├── xtion.yaml
+│           ├── slam_params.yaml
+│           └── nav2_params.yaml
 └── data/
-    └── maps/                    # Saved maps
+    └── maps/                      # Saved maps
 ```
 
 ## Building the Docker Image
 
-If you need to rebuild the Docker image:
-
 ```bash
 cd ~/turtlebot2
 
-# Build for Jetson Nano (takes ~1-2 hours)
-docker build -t turtlebot2_humble \
-  --build-arg BASE_IMAGE=dustynv/ros:humble-ros-base-l4t-r32.7.1 \
-  -f docker/Dockerfile .
+# Build using the helper script (auto-detects Jetson vs non-Jetson)
+./scripts/run.sh build
+
+# Or manually with docker-compose
+docker-compose build
 ```
 
+The Dockerfile uses `ros:humble-ros-base` (standard Ubuntu 22.04) as the base image. Kobuki and ECL packages are built from source; all other dependencies (openni2_camera, depthimage_to_laserscan, etc.) are installed as pre-built binaries via apt.
+
 ## Troubleshooting
+
+### Xtion Audio Driver Conflict (Ubuntu 22.04)
+
+On Ubuntu 22.04, the kernel's `snd-usb-audio` driver may claim the Xtion's USB audio interfaces, preventing OpenNI2 from accessing the depth camera. You'll see `Failed to set USB interface!` errors in the logs.
+
+**Fix**: Unbind the audio interfaces before launching:
+
+```bash
+# Find the Xtion's USB path (look for 1d27:0601)
+# Then unbind the audio interfaces (adjust path as needed)
+sudo sh -c 'echo 1-2.4:1.1 > /sys/bus/usb/drivers/snd-usb-audio/unbind'
+sudo sh -c 'echo 1-2.4:1.2 > /sys/bus/usb/drivers/snd-usb-audio/unbind'
+```
+
+For a permanent fix, install udev rules to auto-unbind on plug-in. See the udev rules at `/etc/udev/rules.d/90-xtion-unbind-audio.rules` on the Jetson.
 
 ### Kobuki Not Detected
 
@@ -248,9 +265,25 @@ ros2 run openni2_camera list_devices
 # works better than ComposableNodeContainer (already configured)
 ```
 
+### No /scan or Point Cloud Data
+
+```bash
+# Check the depth camera is publishing
+ros2 topic hz /camera/depth/image_raw
+
+# Check nodes are running
+ros2 node list | grep depthimage_to_laserscan
+ros2 node list | grep point_cloud
+
+# Check QoS compatibility (important for RViz on remote machine)
+ros2 topic info /scan --verbose
+# /scan uses RELIABLE + TRANSIENT_LOCAL QoS
+# RViz subscribers must match this or they won't receive data
+```
+
 ### Container Can't Access USB Devices
 
-Make sure to run with `--privileged` and `-v /dev:/dev`:
+The container must run privileged with `/dev` mounted. The `run.sh` script and docker-compose handle this automatically. If running manually:
 
 ```bash
 docker run --rm -it --privileged -v /dev:/dev turtlebot2_humble bash
@@ -265,6 +298,7 @@ ros2 topic list
 # Check publishing rate
 ros2 topic hz /odom
 ros2 topic hz /camera/depth/image_raw
+ros2 topic hz /scan
 
 # View topic data
 ros2 topic echo /sensors/battery_state --once
@@ -272,7 +306,7 @@ ros2 topic echo /sensors/battery_state --once
 
 ### View Camera Images (from remote machine)
 
-On a machine with ROS2 and display:
+On a machine with ROS2 and a display:
 
 ```bash
 # Make sure ROS_DOMAIN_ID matches
@@ -289,15 +323,15 @@ ros2 run rqt_image_view rqt_image_view /camera/rgb/image_raw
 
 The Docker image includes:
 
-- [kobuki-base/kobuki_ros](https://github.com/kobuki-base/kobuki_ros) - Kobuki ROS2 driver
-- [kobuki-base/kobuki_core](https://github.com/kobuki-base/kobuki_core) - Kobuki core library
-- [stonier/ecl_core](https://github.com/stonier/ecl_core) - ECL libraries
-- [ros-drivers/openni2_camera](https://github.com/ros-drivers/openni2_camera) - OpenNI2 camera driver
-- [dusty-nv/jetson-containers](https://github.com/dusty-nv/jetson-containers) - Base Jetson image
+- [kobuki-base/kobuki_ros](https://github.com/kobuki-base/kobuki_ros) - Kobuki ROS2 driver (built from source)
+- [kobuki-base/kobuki_core](https://github.com/kobuki-base/kobuki_core) - Kobuki core library (built from source)
+- [stonier/ecl_core](https://github.com/stonier/ecl_core) - ECL libraries (built from source)
+- [ros-drivers/openni2_camera](https://github.com/ros-drivers/openni2_camera) - OpenNI2 camera driver (apt)
+- [ros-humble-depthimage-to-laserscan](https://index.ros.org/p/depthimage_to_laserscan/) - Depth to laser scan converter (apt)
+- [ros-humble-depth-image-proc](https://index.ros.org/p/depth_image_proc/) - Point cloud generation (apt)
 
 ## References
 
 - [ROS2 Humble Documentation](https://docs.ros.org/en/humble/)
 - [Kobuki Documentation](https://kobuki.readthedocs.io/)
 - [OpenNI2 Camera](https://github.com/ros-drivers/openni2_camera)
-- [Jetson Containers](https://github.com/dusty-nv/jetson-containers)

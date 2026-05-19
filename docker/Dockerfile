@@ -30,6 +30,8 @@ RUN apt-get update && apt-get install -y \
     ros-humble-depthimage-to-laserscan \
     ros-humble-openni2-camera \
     ros-humble-image-transport \
+    ros-humble-compressed-image-transport \
+    ros-humble-compressed-depth-image-transport \
     ros-humble-camera-info-manager \
     ros-humble-tf2-ros \
     ros-humble-tf2-tools \

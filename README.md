@@ -226,16 +226,34 @@ The Dockerfile uses `ros:humble-ros-base` (standard Ubuntu 22.04) as the base im
 
 On Ubuntu 22.04, the kernel's `snd-usb-audio` driver may claim the Xtion's USB audio interfaces, preventing OpenNI2 from accessing the depth camera. You'll see `Failed to set USB interface!` errors in the logs.
 
+**Note**: On Jetson Nano, `snd-usb-audio` is built into the kernel, so blacklisting via modprobe does not work.
+
 **Fix**: Unbind the audio interfaces before launching:
 
 ```bash
-# Find the Xtion's USB path (look for 1d27:0601)
-# Then unbind the audio interfaces (adjust path as needed)
-sudo sh -c 'echo 1-2.4:1.1 > /sys/bus/usb/drivers/snd-usb-audio/unbind'
-sudo sh -c 'echo 1-2.4:1.2 > /sys/bus/usb/drivers/snd-usb-audio/unbind'
+# Run the auto-unbind script (finds Xtion by vendor ID, port-agnostic)
+sudo /usr/local/bin/xtion-unbind-audio.sh
+
+# Or manually — first find which interfaces are grabbed:
+ls /sys/bus/usb/drivers/snd-usb-audio/
+# Then unbind (replace port numbers as needed):
+sudo sh -c 'echo 1-2.X:1.1 > /sys/bus/usb/drivers/snd-usb-audio/unbind'
+sudo sh -c 'echo 1-2.X:1.2 > /sys/bus/usb/drivers/snd-usb-audio/unbind'
 ```
 
-For a permanent fix, install udev rules to auto-unbind on plug-in. See the udev rules at `/etc/udev/rules.d/90-xtion-unbind-audio.rules` on the Jetson.
+For a permanent fix, udev rules auto-unbind on plug-in. See `/etc/udev/rules.d/90-xtion-unbind-audio.rules` on the Jetson.
+
+### Xtion Depth All Zeros (USB Port Issue)
+
+If the depth topic publishes at normal Hz but `/scan` is all NaN, the depth frames may be entirely zeros. This happens when the Xtion is plugged into certain USB hub ports on the Jetson Nano — RGB works fine but the depth/IR stream fails silently.
+
+**Symptoms**:
+- `ros2 topic hz /camera/depth/image_raw` shows ~25-30 Hz (looks normal)
+- `ros2 topic echo /scan --once` shows all NaN ranges
+- No errors in OpenNI2 logs — streams appear to start but produce no data
+- IR projector (red glow on front of camera) may not light up
+
+**Fix**: Move the Xtion to a different USB port on the Jetson. The Kobuki FTDI adapter is not affected and works on any port.
 
 ### Kobuki Not Detected
 

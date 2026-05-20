@@ -243,9 +243,9 @@ sudo sh -c 'echo 1-2.X:1.2 > /sys/bus/usb/drivers/snd-usb-audio/unbind'
 
 For a permanent fix, udev rules auto-unbind on plug-in. See `/etc/udev/rules.d/90-xtion-unbind-audio.rules` on the Jetson.
 
-### Xtion Depth All Zeros (USB Port Issue)
+### Xtion Depth All Zeros After Boot
 
-If the depth topic publishes at normal Hz but `/scan` is all NaN, the depth frames may be entirely zeros. This happens when the Xtion is plugged into certain USB hub ports on the Jetson Nano — RGB works fine but the depth/IR stream fails silently.
+If the depth topic publishes at normal Hz but `/scan` is all NaN, the depth frames are entirely zeros. This happens after every boot on the Jetson Nano — RGB works fine but the depth/IR stream fails silently.
 
 **Symptoms**:
 - `ros2 topic hz /camera/depth/image_raw` shows ~25-30 Hz (looks normal)
@@ -253,7 +253,20 @@ If the depth topic publishes at normal Hz but `/scan` is all NaN, the depth fram
 - No errors in OpenNI2 logs — streams appear to start but produce no data
 - IR projector (red glow on front of camera) may not light up
 
-**Fix**: Move the Xtion to a different USB port on the Jetson. The Kobuki FTDI adapter is not affected and works on any port.
+**Root cause**: The Jetson Nano's USB hub needs a full power cycle for the Xtion depth sensor to initialize. Software USB resets on individual ports are not sufficient.
+
+**Fix**: Power cycle the entire USB hub (handled automatically by the startup script):
+
+```bash
+# WARNING: This briefly disconnects WiFi (same hub)
+sudo sh -c 'echo 0 > /sys/bus/usb/devices/1-2/authorized'
+sleep 5
+sudo sh -c 'echo 1 > /sys/bus/usb/devices/1-2/authorized'
+sleep 15  # wait for devices to re-enumerate
+sudo /usr/local/bin/xtion-unbind-audio.sh  # unbind audio after reset
+```
+
+Alternatively, physically unplug and replug the Xtion camera.
 
 ### Kobuki Not Detected
 

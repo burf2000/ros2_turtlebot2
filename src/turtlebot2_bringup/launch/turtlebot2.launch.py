@@ -19,6 +19,7 @@ def generate_launch_description():
     launch_kobuki = LaunchConfiguration('launch_kobuki', default='true')
     launch_camera = LaunchConfiguration('launch_camera', default='true')
     launch_robot_state_publisher = LaunchConfiguration('launch_robot_state_publisher', default='false')
+    launch_point_cloud = LaunchConfiguration('launch_point_cloud', default='false')
 
     # Declare launch arguments
     declare_use_sim_time = DeclareLaunchArgument(
@@ -43,6 +44,12 @@ def generate_launch_description():
         'launch_robot_state_publisher',
         default_value='true',
         description='Launch robot state publisher (requires xacro)'
+    )
+
+    declare_launch_point_cloud = DeclareLaunchArgument(
+        'launch_point_cloud',
+        default_value='false',
+        description='Launch point cloud generation (disable to save CPU and bandwidth)'
     )
 
     # Robot State Publisher (optional, requires xacro)
@@ -98,7 +105,7 @@ def generate_launch_description():
     # Point cloud generation from depth + RGB using depth_image_proc
     # (ROS2 openni2_camera does not publish point clouds natively like ROS1)
     point_cloud_container = ComposableNodeContainer(
-        condition=IfCondition(launch_camera),
+        condition=IfCondition(launch_point_cloud),
         name='point_cloud_container',
         namespace='',
         package='rclcpp_components',
@@ -146,6 +153,7 @@ def generate_launch_description():
         declare_launch_kobuki,
         declare_launch_camera,
         declare_launch_robot_state_publisher,
+        declare_launch_point_cloud,
 
         robot_state_publisher,
         kobuki_node,

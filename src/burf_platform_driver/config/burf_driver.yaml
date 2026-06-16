@@ -1,0 +1,15 @@
+/**:
+  ros__parameters:
+    server_url: "wss://platform.burf.co/ws/robot"
+    local: false
+    robot_id: "turtlebot2-01"
+    robot_name: "TurtleBot 2"
+    api_key: ""
+    camera_topic: "/camera/rgb/image_raw/compressed"
+    use_compressed: true
+    odom_topic: "/odom"
+    imu_topic: "/imu"
+    cmd_vel_topic: "/cmd_vel"
+    scan_topic: "/scan"
+    telemetry_rate: 5.0
+    video_fps: 10

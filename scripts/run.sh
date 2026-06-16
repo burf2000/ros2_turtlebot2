@@ -47,9 +47,19 @@ case $COMMAND in
             ros2 run teleop_twist_keyboard teleop_twist_keyboard
         ;;
     slam)
-        echo "Starting SLAM..."
-        docker-compose $COMPOSE_FILES run --rm turtlebot2 \
-            ros2 launch turtlebot2_bringup slam.launch.py
+        # SLAM runs INSIDE the live bringup container (shares DDS / sensors).
+        # Includes the odom_tf_bridge (kobuki doesn't broadcast odom TF).
+        echo "Starting SLAM (slam_toolbox + odom_tf_bridge)..."
+        docker exec -d turtlebot2_bringup bash -c \
+            'source /opt/ros/humble/setup.bash && source /root/turtlebot2_ws/install/setup.bash && ros2 launch turtlebot2_bringup slam.launch.py'
+        echo "Launched. Verify: docker exec turtlebot2_bringup bash -lc 'source /opt/ros/humble/setup.bash && ros2 topic hz /map'"
+        ;;
+    burf)
+        # Burf Platform driver (+ raw->compressed camera republish), in the live container.
+        echo "Starting Burf Platform driver (turtlebot2-01)..."
+        docker exec -d turtlebot2_bringup bash -c \
+            'source /opt/ros/humble/setup.bash && source /root/turtlebot2_ws/install/setup.bash && ros2 launch turtlebot2_bringup burf.launch.py'
+        echo "Launched -> turtlebot2-01 on https://platform.burf.co (run 'slam' first for map + waypoint)"
         ;;
     nav)
         echo "Starting Nav2..."
@@ -70,7 +80,7 @@ case $COMMAND in
         docker-compose $COMPOSE_FILES --profile dev run --rm turtlebot2-dev bash
         ;;
     *)
-        echo "Usage: $0 {bash|bringup|kobuki|camera|teleop|desktop|slam|nav|build|dev}"
+        echo "Usage: $0 {bash|bringup|kobuki|camera|teleop|desktop|slam|burf|nav|build|dev}"
         echo ""
         echo "Commands:"
         echo "  bash    - Start interactive shell"
@@ -79,7 +89,8 @@ case $COMMAND in
         echo "  camera  - Launch Astra camera only"
         echo "  teleop  - Start keyboard teleop"
         echo "  desktop - Launch RViz and teleop (desktop side)"
-        echo "  slam    - Start SLAM mapping"
+        echo "  slam    - Start SLAM mapping (slam_toolbox + odom_tf_bridge)"
+        echo "  burf    - Start Burf Platform driver (+ camera republish)"
         echo "  nav     - Start Nav2 navigation"
         echo "  build   - Build Docker image"
         echo "  dev     - Start development container"

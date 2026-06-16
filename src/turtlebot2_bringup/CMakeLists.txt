@@ -14,4 +14,10 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}
 )
 
+# Install executable scripts (odom_tf_bridge etc.)
+install(PROGRAMS
+  scripts/odom_tf_bridge.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()

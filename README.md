@@ -2,6 +2,31 @@
 
 This project provides a complete ROS2 Humble setup for TurtleBot 2 running on NVIDIA Jetson Nano via Docker (standard Ubuntu 22.04, no GPU acceleration needed).
 
+## Burf Platform — power on → SLAM → drive (reboot-proof)
+
+The Docker image bakes in everything needed: `slam_toolbox`, the `burf_platform_driver`
+(vendored in `src/burf_platform_driver`), the WebRTC video stack (`aiortc`/`av`/`opencv`),
+the camera compressed-transport, and the `odom_tf_bridge`. After a reboot the bringup
+auto-starts; then two commands bring the robot up on https://platform.burf.co:
+
+```bash
+./scripts/run.sh slam    # slam_toolbox + odom_tf_bridge (map + waypoint TF)
+./scripts/run.sh burf    # Burf driver + raw->compressed camera republish  (run slam first)
+```
+
+Robot appears as `turtlebot2-01` (map, LiDAR, telemetry, waypoint, camera). Drive it to grow the map.
+
+**Why the `odom_tf_bridge`:** the Kobuki node publishes the `/odom` topic but NOT the
+`odom->base_footprint` TF, so slam_toolbox would drop every scan. The bridge supplies that
+transform (stamped with `now()` — message-time stamping makes SLAM drop on timing).
+
+**Why the camera republish:** the driver streams video over WebRTC and (with
+`use_compressed: true`) subscribes to `/camera/rgb/image_raw/compressed`, which the openni2
+camera doesn't publish — so we republish raw→compressed. `camera_topic` must be the full
+`/compressed` path (the driver does not append `/compressed`).
+
+To rebuild the image after changes: `./scripts/run.sh build` (or `docker compose ... build`).
+
 ## Hardware
 
 - **Compute**: NVIDIA Jetson Nano (4GB)

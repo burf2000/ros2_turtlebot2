@@ -35,7 +35,17 @@ RUN apt-get update && apt-get install -y \
     ros-humble-camera-info-manager \
     ros-humble-tf2-ros \
     ros-humble-tf2-tools \
+    ros-humble-slam-toolbox \
     && rm -rf /var/lib/apt/lists/*
+
+# Python deps for the Burf Platform driver (WebRTC video + websocket)
+RUN pip3 install --no-cache-dir \
+    "websockets>=12.0,<14.0" \
+    "psutil>=5.9.0,<7.0" \
+    "opencv-python-headless>=4.8.0,<5.0" \
+    "aiortc>=1.6.0,<2.0" \
+    "av>=10.0.0,<14.0" \
+    "numpy<2.0"
 
 # Create workspace
 ENV ROS_WS=/root/turtlebot2_ws
@@ -71,11 +81,13 @@ RUN source /opt/ros/humble/setup.bash && \
 # Copy local packages (will be mounted, but copy for standalone use)
 COPY src/turtlebot2_description ${ROS_WS}/src/local/turtlebot2_description
 COPY src/turtlebot2_bringup ${ROS_WS}/src/local/turtlebot2_bringup
+COPY src/burf_platform_driver ${ROS_WS}/src/local/burf_platform_driver
 
-# Build local packages
+# Build local packages (incl. the Burf Platform driver)
 RUN source /opt/ros/humble/setup.bash && \
     source ${ROS_WS}/install/setup.bash && \
-    colcon build --symlink-install --packages-select turtlebot2_description turtlebot2_bringup
+    colcon build --symlink-install --packages-select \
+        turtlebot2_description turtlebot2_bringup burf_platform_driver
 
 # Setup entrypoint
 COPY docker/ros_entrypoint.sh /ros_entrypoint.sh

@@ -1,0 +1,96 @@
+# SLAM Toolbox Parameters for TurtleBot 2 — LOCALIZATION mode.
+#
+# Copy of slam_params.yaml with mode flipped to `localization` and a
+# `map_file_name` pointing at a previously-serialized posegraph. In this mode
+# slam_toolbox loads the saved graph and scan-matches the live LaserScan
+# against it to publish map->odom TF — it does NOT grow the map.
+#
+# `map_file_name` is overridden at launch time by the `map_file_name:=` launch
+# arg (see launch/slam.launch.py), so the same file serves any saved map. The
+# value below is only a sane default; give it WITHOUT the .posegraph extension —
+# slam_toolbox appends .posegraph / .data itself.
+#
+# CAVEAT (carry into every demo): localization quality scales with the angular
+# FOV of the scan. A 360° LiDAR (LD06/LD19) relocalizes robustly from anywhere
+# in the mapped space. The TurtleBot2's Xtion depth->scan is only ~58° FOV, so
+# on relaunch the robot must already be parked near its original mapping start
+# pose, facing a feature-rich wall, or scan-matching has too little overlap to
+# converge and map->odom can lock onto a wrong pose. Ship localization on LD06
+# robots first; treat the TurtleBot as best-effort.
+slam_toolbox:
+  ros__parameters:
+    # Plugin params
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    ceres_dogleg_type: TRADITIONAL_DOGLEG
+    ceres_loss_function: None
+
+    # ROS Parameters
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_footprint
+    scan_topic: /scan
+    mode: localization
+
+    # Localization params — which serialized posegraph to load on startup.
+    # NO extension; slam_toolbox adds .posegraph / .data. Overridden by the
+    # `map_file_name:=` launch arg.
+    map_file_name: /home/burf2000/maps/ground-floor
+    # Start the robot at the map's saved origin/dock pose. If the robot is
+    # NOT parked at the dock on relaunch, comment this out and supply an
+    # explicit map_start_pose instead.
+    map_start_at_dock: true
+    # map_start_pose: [0.0, 0.0, 0.0]   # [x, y, theta] explicit start pose
+
+    # Lifelong params
+    debug_logging: false
+    # Jetson Nano can't process 30 Hz Xtion depth->scan through slam in real time
+    # (queue-full scan drops -> gappy map -> A* sees unknown cells as walls -> nav fails).
+    # Process every 3rd scan (~10 Hz) — plenty for walking-pace indoor driving, no drops.
+    throttle_scans: 3
+    transform_publish_period: 0.02
+    map_update_interval: 1.0
+    resolution: 0.05
+    max_laser_range: 12.0
+    minimum_time_interval: 0.5
+    transform_timeout: 1.0
+    tf_buffer_duration: 30.0
+    stack_size_to_use: 40000000
+
+    # General Parameters
+    use_scan_matching: true
+    use_scan_barycenter: true
+    minimum_travel_distance: 0.5
+    minimum_travel_heading: 0.5
+    scan_buffer_size: 10
+    scan_buffer_maximum_scan_distance: 10.0
+    link_match_minimum_response_fine: 0.1
+    link_scan_maximum_distance: 1.5
+    loop_search_maximum_distance: 3.0
+    do_loop_closing: true
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_coarse: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine: 0.45
+
+    # Correlation Parameters
+    correlation_search_space_dimension: 0.5
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.1
+
+    # Loop Closure Parameters
+    loop_search_space_dimension: 8.0
+    loop_search_space_resolution: 0.05
+    loop_search_space_smear_deviation: 0.03
+
+    # Scan Matcher Parameters
+    distance_variance_penalty: 0.5
+    angle_variance_penalty: 1.0
+    fine_search_angle_offset: 0.00349
+    coarse_search_angle_offset: 0.349
+    coarse_angle_resolution: 0.0349
+    minimum_angle_penalty: 0.9
+    minimum_distance_penalty: 0.5
+    use_response_expansion: true

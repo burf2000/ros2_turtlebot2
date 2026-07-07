@@ -2,11 +2,11 @@
 kobuki_node:
   ros__parameters:
     # Device configuration.
-    # ⚠ The LD06 LiDAR (CH340, 1a86:7523) ALSO enumerates as /dev/ttyUSB* —
+    # ⚠ The LD06 LiDAR adapter (Prolific PL2303, 067b:2303) ALSO enumerates as /dev/ttyUSB* —
     # ttyUSB0/1 ordering is a boot-time race. Pin BOTH devices by /dev/serial/by-id
-    # (Kobuki = FTDI 0403:6001) so they can never swap. See config/ldlidar.yaml
+    # (Kobuki = FTDI 0403:6001, serial AI02MPKH) so they can never swap. See config/ldlidar.yaml
     # for the LiDAR side.
-    device_port: /dev/serial/by-id/KOBUKI_FTDI_BY_ID_PLACEHOLDER
+    device_port: /dev/serial/by-id/usb-Yujin_Robot_iClebo_Kobuki_kobuki_AI02MPKH-if00-port0
 
     # Odometry
     odom_frame: odom

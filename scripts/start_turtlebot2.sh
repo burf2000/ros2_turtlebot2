@@ -35,10 +35,20 @@ docker exec -d turtlebot2_bringup bash -c \
      ros2 launch turtlebot2_bringup turtlebot2.launch.py launch_robot_state_publisher:=true launch_lidar:=false"
 sleep 8
 # Custom LD06 -> /scan node (raw FTDI read; see ld06_scan_node.py header).
+# Prefer the node BAKED into the image (installed via CMakeLists to
+# lib/turtlebot2_bringup); fall back to the host copy if the image predates it.
 echo "Starting custom LD06 LiDAR node..."
-docker cp /home/burf2000/ld06_scan_node.py turtlebot2_bringup:/tmp/ld06_scan_node.py
-docker exec -d turtlebot2_bringup bash -c \
-    "source /opt/ros/humble/setup.bash && python3 /tmp/ld06_scan_node.py > /tmp/ld06.log 2>&1"
+if docker exec turtlebot2_bringup bash -c \
+    "source /opt/ros/humble/setup.bash && source /root/turtlebot2_ws/install/setup.bash && ros2 pkg executables turtlebot2_bringup 2>/dev/null | grep -q ld06_scan_node.py"; then
+    echo "  using baked-in node (ros2 run)"
+    docker exec -d turtlebot2_bringup bash -c \
+        "source /opt/ros/humble/setup.bash && source /root/turtlebot2_ws/install/setup.bash && ros2 run turtlebot2_bringup ld06_scan_node.py > /tmp/ld06.log 2>&1"
+else
+    echo "  baked-in node not found, using host copy"
+    docker cp /home/burf2000/ld06_scan_node.py turtlebot2_bringup:/tmp/ld06_scan_node.py
+    docker exec -d turtlebot2_bringup bash -c \
+        "source /opt/ros/humble/setup.bash && python3 /tmp/ld06_scan_node.py > /tmp/ld06.log 2>&1"
+fi
 # Static mount TF base_footprint -> lidar_link. The launch's own lidar_static_tf is
 # gated on launch_lidar (=false here), so publish it here or slam_toolbox drops
 # every scan ("message filter queue full") and no map builds.

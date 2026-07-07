@@ -78,6 +78,19 @@ RUN apt-get update && \
 RUN source /opt/ros/humble/setup.bash && \
     colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --continue-on-error
 
+# Okdo LD06 LiDAR driver (ldlidar_stl_ros2) — no apt/rosdep binary, vendor from
+# source (same approach as the wheelchair build). turtlebot2.launch.py launches
+# package 'ldlidar_stl_ros2', exe 'ldlidar_stl_ros2_node'. NB: this SDK's baud
+# param is `port_baudrate` (NOT serial_baudrate) — see bringup config/ldlidar.yaml.
+# (Deliberately AFTER the big Kobuki/ECL build layer so adding it doesn't bust
+# the docker cache — a full rebuild takes ~an hour on the Nano.)
+RUN cd ${ROS_WS}/src && \
+    git clone --depth 1 https://github.com/ldrobotSensorTeam/ldlidar_stl_ros2.git && \
+    source /opt/ros/humble/setup.bash && \
+    source ${ROS_WS}/install/setup.bash && \
+    colcon build --symlink-install --packages-select ldlidar_stl_ros2 \
+        --cmake-args -DCMAKE_BUILD_TYPE=Release
+
 # Copy local packages (will be mounted, but copy for standalone use)
 COPY src/turtlebot2_description ${ROS_WS}/src/local/turtlebot2_description
 COPY src/turtlebot2_bringup ${ROS_WS}/src/local/turtlebot2_bringup

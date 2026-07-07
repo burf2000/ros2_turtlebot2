@@ -1,0 +1,24 @@
+# Okdo LD06 2D LiDAR (LDRobot LD06, ldlidar_stl_ros2 driver).
+# Publishes /scan (10 Hz, 360°, ~0.1–12 m) in frame lidar_link.
+#
+# Serial: the LD06 arrived on a Prolific PL2303 USB-UART (067b:2303 — NOT the
+# expected CH340/1a86; verified live on the Jetson 2026-07-07). The Kobuki base
+# is an FTDI (0403:6001) — ALWAYS address both by /dev/serial/by-id so they can
+# never swap after a replug/reboot (plugging the LD06 in fact stole ttyUSB0
+# from the Kobuki). PL2303s carry no unique serial, so the by-id path below is
+# stable only while exactly ONE Prolific adapter is plugged in.
+#
+# ⚠ GOTCHA (proven on the wheelchair, SDK v3.0.3): the baud param is
+#   `port_baudrate` — NOT `serial_baudrate`. The wrong name is silently
+#   ignored and you get garbage frames at a default baud.
+ldlidar_node:
+  ros__parameters:
+    product_name: "LDLiDAR_LD06"
+    topic_name: "scan"
+    frame_id: "lidar_link"
+    port_name: "/dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller-if00-port0"
+    port_baudrate: 230400
+    laser_scan_dir: true                # true = counter-clockwise angle increase
+    enable_angle_crop_func: false       # set true + range below to blank a mast/pole
+    angle_crop_min: 0.0
+    angle_crop_max: 0.0

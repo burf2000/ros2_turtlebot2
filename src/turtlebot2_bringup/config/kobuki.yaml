@@ -1,8 +1,12 @@
 # Kobuki Node Parameters
 kobuki_node:
   ros__parameters:
-    # Device configuration
-    device_port: /dev/ttyUSB0
+    # Device configuration.
+    # ⚠ The LD06 LiDAR (CH340, 1a86:7523) ALSO enumerates as /dev/ttyUSB* —
+    # ttyUSB0/1 ordering is a boot-time race. Pin BOTH devices by /dev/serial/by-id
+    # (Kobuki = FTDI 0403:6001) so they can never swap. See config/ldlidar.yaml
+    # for the LiDAR side.
+    device_port: /dev/serial/by-id/KOBUKI_FTDI_BY_ID_PLACEHOLDER
 
     # Odometry
     odom_frame: odom

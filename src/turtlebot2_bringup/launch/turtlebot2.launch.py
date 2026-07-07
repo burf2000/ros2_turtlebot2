@@ -18,7 +18,11 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     launch_kobuki = LaunchConfiguration('launch_kobuki', default='true')
     launch_camera = LaunchConfiguration('launch_camera', default='true')
-    launch_lidar = LaunchConfiguration('launch_lidar', default='true')
+    # DEFAULT OFF: the ldlidar_stl_ros2 SDK (below) is unreliable on this Jetson
+    # Nano (times out / "communication abnormal" on the FTDI/PL2303, latency).
+    # The REAL /scan comes from the custom raw-read node scripts/ld06_scan_node.py,
+    # started by scripts/start_turtlebot2.sh (which also publishes the lidar TF).
+    launch_lidar = LaunchConfiguration('launch_lidar', default='false')
     launch_depth_scan = LaunchConfiguration('launch_depth_scan', default='false')
     launch_robot_state_publisher = LaunchConfiguration('launch_robot_state_publisher', default='false')
     launch_point_cloud = LaunchConfiguration('launch_point_cloud', default='false')
@@ -56,8 +60,12 @@ def generate_launch_description():
 
     declare_launch_lidar = DeclareLaunchArgument(
         'launch_lidar',
-        default_value='true',
-        description='Launch the Okdo LD06 LiDAR (real /scan). Default on.'
+        default_value='false',
+        description='Launch the ldlidar_stl_ros2 SDK LiDAR node + its static TF. '
+                    'DEFAULT OFF: the SDK is unreliable on this Nano; the working '
+                    '/scan is the custom scripts/ld06_scan_node.py (raw FTDI read), '
+                    'run by scripts/start_turtlebot2.sh which also publishes the '
+                    'base_footprint->lidar_link TF slam_toolbox needs.'
     )
 
     declare_launch_depth_scan = DeclareLaunchArgument(

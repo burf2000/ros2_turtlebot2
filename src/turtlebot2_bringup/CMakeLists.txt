@@ -17,6 +17,7 @@ install(DIRECTORY
 # Install executable scripts (odom_tf_bridge etc.)
 install(PROGRAMS
   scripts/odom_tf_bridge.py
+  scripts/ld06_scan_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

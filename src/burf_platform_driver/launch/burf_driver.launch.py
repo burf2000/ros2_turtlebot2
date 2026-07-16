@@ -2,6 +2,7 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
+from launch_ros.parameter_descriptions import ParameterValue
 from ament_index_python.packages import get_package_share_directory
 import os
 
@@ -51,20 +52,40 @@ def generate_launch_description():
                     'typically meaning SLAM is also running).'
     )
 
-    # Create the node
+    # Full per-robot params file. Defaults to the package's own burf_driver.yaml;
+    # a robot with different topics/frames/speeds (e.g. the wheelchair publishing
+    # to /cmd_vel_nav behind an ARM-switch mux) points this at its own config.
+    params_file_arg = DeclareLaunchArgument(
+        'params_file',
+        default_value=config_file,
+        description='Path to a ROS2 params YAML for the driver (per-robot config).'
+    )
+
+    # API key is NOT a launch arg — it's read from the environment (PLATFORM_API_KEY
+    # / BURF_API_KEY) inside the driver when the params-file value is empty. Keeps
+    # the secret out of committed config without risking blanking a robot whose
+    # params file DOES carry a key.
+
+    # Create the node. The bool flags are wrapped in ParameterValue(value_type=bool)
+    # so a launch-arg string ("true"/"false") is coerced to a real bool — without
+    # this the node receives the literal string and `if self.enable_map_relay`
+    # is truthy even for "false".
     burf_driver_node = Node(
         package='burf_platform_driver',
         executable='burf_driver',
         name='burf_driver',
         output='screen',
         parameters=[
-            config_file,
+            LaunchConfiguration('params_file'),
             {
                 'server_url': LaunchConfiguration('server_url'),
                 'robot_id': LaunchConfiguration('robot_id'),
-                'local': LaunchConfiguration('local'),
-                'enable_map_relay': LaunchConfiguration('enable_map_relay'),
-                'enable_goto': LaunchConfiguration('enable_goto'),
+                'local': ParameterValue(
+                    LaunchConfiguration('local'), value_type=bool),
+                'enable_map_relay': ParameterValue(
+                    LaunchConfiguration('enable_map_relay'), value_type=bool),
+                'enable_goto': ParameterValue(
+                    LaunchConfiguration('enable_goto'), value_type=bool),
             }
         ],
         remappings=[
@@ -79,5 +100,6 @@ def generate_launch_description():
         local_arg,
         enable_map_relay_arg,
         enable_goto_arg,
+        params_file_arg,
         burf_driver_node
     ])

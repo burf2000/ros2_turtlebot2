@@ -78,6 +78,7 @@ class GoToController:
         self._distance_remaining: float = float('inf')
         self._last_progress_t: float = 0.0
         self._best_distance: float = float('inf')
+        self._best_yaw: float = float('inf')
         self._goal_id: int = 0
 
     # ─── Public API ─────────────────────────────────────────────────────────
@@ -101,6 +102,7 @@ class GoToController:
         self._state = self.ROTATING
         self._distance_remaining = float('inf')
         self._best_distance = float('inf')
+        self._best_yaw = float('inf')
         self._last_progress_t = 0.0
         self._goal_id += 1
 
@@ -142,16 +144,34 @@ class GoToController:
         self._distance_remaining = dist
         status['distance_remaining'] = dist
 
-        # Initialise / track stall watchdog
+        # Heading error to the current goal — used for driving AND the stall
+        # watchdog (turning to face the goal counts as progress).
+        heading = math.atan2(dy, dx)
+        yaw_to_heading = _wrap_angle(heading - ptheta)
+
+        # Stall watchdog. Progress = getting >=5 cm closer OR turning >=~5 deg
+        # tighter to the goal heading. Without the angular term a slow in-place
+        # turn (ang_speed is deliberately low for clean SLAM scans) makes no
+        # linear progress and trips the timeout mid-rotation — the "rotated then
+        # failed" bug. Now only a genuinely stuck robot (neither closing distance
+        # nor turning toward the goal) trips it.
         if self._best_distance == float('inf'):
             self._best_distance = dist
+            self._best_yaw = abs(yaw_to_heading)
             self._last_progress_t = now_s
-        elif dist < self._best_distance - 0.05:   # 5 cm tighter counts as progress
-            self._best_distance = dist
-            self._last_progress_t = now_s
-        elif (now_s - self._last_progress_t) > self.stall_timeout_s:
-            self._state = self.FAILED
-            return (0.0, 0.0), dict(status, state=self._state)
+        else:
+            progressed = False
+            if dist < self._best_distance - 0.05:
+                self._best_distance = dist
+                progressed = True
+            if abs(yaw_to_heading) < self._best_yaw - 0.087:   # ~5 deg
+                self._best_yaw = abs(yaw_to_heading)
+                progressed = True
+            if progressed:
+                self._last_progress_t = now_s
+            elif (now_s - self._last_progress_t) > self.stall_timeout_s:
+                self._state = self.FAILED
+                return (0.0, 0.0), dict(status, state=self._state)
 
         # If close enough in position, handle final-theta / arrival
         if dist <= self.goal_xy_tol:
@@ -167,10 +187,7 @@ class GoToController:
             ang = math.copysign(self.ang_speed, yaw_err)
             return (0.0, ang), dict(status, state=self._state)
 
-        # Heading to goal
-        heading = math.atan2(dy, dx)
-        yaw_to_heading = _wrap_angle(heading - ptheta)
-
+        # heading / yaw_to_heading already computed above for the watchdog.
         if self._state == self.ROTATING:
             if abs(yaw_to_heading) <= self.rotate_align_tol:
                 self._state = self.DRIVING

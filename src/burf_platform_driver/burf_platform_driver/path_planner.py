@@ -51,16 +51,40 @@ class GridInfo:
 class GridPathPlanner:
     """A* planner on an inflated OccupancyGrid."""
 
-    OCCUPIED_THRESHOLD = 50    # cells with cost >=50 are obstacles
-    UNKNOWN_AS_BLOCKED = True  # treat unknown cells (-1) as blocked too — safer
+    OCCUPIED_THRESHOLD = 50     # cells with cost >=50 are obstacles
+    # Unknown cells (-1) are UNEXPLORED, not obstacles. For EXPLORE we plan
+    # THROUGH unknown so the planner can route toward frontiers (which sit at the
+    # edge of unknown); blocking them there stalls exploration. For a MANUAL goto
+    # the opposite is true — routing through unmapped space drives the robot blind
+    # into walls that were never seen. So unknown-handling is a per-call decision
+    # (plan(allow_unknown=...)); this class default is the safe one (block).
+    UNKNOWN_AS_BLOCKED = True
+    # Occupied blobs this size or smaller are treated as SLAM salt-and-pepper
+    # noise and dropped before inflation. A real wall is a large connected run of
+    # cells (tens to hundreds); a 1-3 cell speckle in open space is almost always
+    # a spurious return. Left in, each gets inflated by the robot radius and
+    # pinches doorways/passages shut, making the far side of the map unreachable.
+    MIN_OCCUPIED_COMPONENT = 3
+    # For a manual goto we don't route through UNMAPPED space (drive blind) — but
+    # blocking ALL unknown is too strict: it refuses a perfectly mapped-free goal
+    # whose direct route merely clips the ragged frontier edge. So we block only
+    # DEEP unknown — cells more than UNKNOWN_REACH_M from any mapped-free cell.
+    # Unknown within this rind of free space stays passable (the robot only ever
+    # noses a short, bounded distance into the unmapped, and SLAM fills it in as
+    # it approaches); a genuine open void has an interior beyond the rind → blocked.
+    UNKNOWN_REACH_M = 0.30
 
     def __init__(self, robot_radius_m: float = 0.18,
-                 inflation_padding_m: float = 0.05):
+                 inflation_padding_m: float = 0.05,
+                 unknown_reach_m: float = UNKNOWN_REACH_M):
         """robot_radius_m: half the robot's longest dimension.
            inflation_padding_m: extra buffer beyond robot_radius. Bumps the
-           planner away from hugging walls."""
+           planner away from hugging walls.
+           unknown_reach_m: how far a manual goto may nose into unmapped space
+           beyond the last mapped-free cell (deep unknown past this is blocked)."""
         self.robot_radius_m = float(robot_radius_m)
         self.inflation_padding_m = float(inflation_padding_m)
+        self.unknown_reach_m = float(unknown_reach_m)
 
     # ─── World <-> grid coordinate conversion ────────────────────────────
 
@@ -101,13 +125,86 @@ class GridPathPlanner:
                 inflated[y0_dst:y1_dst, x0_dst:x1_dst] |= occ[y0_src:y1_src, x0_src:x1_src]
         return inflated
 
-    def build_blocked(self, grid: np.ndarray, info: GridInfo) -> np.ndarray:
+    @classmethod
+    def _denoise(cls, occ: np.ndarray) -> np.ndarray:
+        """Drop small isolated occupied blobs — salt-and-pepper SLAM noise. A
+        real wall is a large connected run of cells; a 1-3 cell speckle in open
+        space is almost always a spurious return. Left in, each gets inflated by
+        the robot radius and pinches doorways/passages shut, which makes the far
+        side of the map unreachable. Dropping every connected occupied component
+        of size <= MIN_OCCUPIED_COMPONENT keeps a real safety margin at genuine
+        walls while letting the robot through passages 'blocked' only by noise."""
+        if not occ.any():
+            return occ
+        try:
+            from scipy.ndimage import label
+            # 8-connectivity: label every occupied blob, drop the small ones.
+            lab, n = label(occ, structure=np.ones((3, 3), np.int32))
+            if n == 0:
+                return occ
+            sizes = np.bincount(lab.ravel())      # sizes[0] = background
+            keep = sizes > cls.MIN_OCCUPIED_COMPONENT
+            keep[0] = False                        # background is never occupied
+            return keep[lab]
+        except ImportError:
+            # Pure-numpy fallback (no scipy): can only cheaply remove fully
+            # isolated cells (component size 1), not larger blobs. Count occupied
+            # 8-neighbours and keep cells that have at least one.
+            h, w = occ.shape
+            cnt = np.zeros((h, w), dtype=np.int32)
+            oi = occ.astype(np.int32)
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    if dx == 0 and dy == 0:
+                        continue
+                    ys0, ys1 = max(0, -dy), h - max(0, dy)
+                    xs0, xs1 = max(0, -dx), w - max(0, dx)
+                    yd0, yd1 = max(0, dy), h - max(0, -dy)
+                    xd0, xd1 = max(0, dx), w - max(0, -dx)
+                    cnt[yd0:yd1, xd0:xd1] += oi[ys0:ys1, xs0:xs1]
+            return occ & (cnt >= 1)
+
+    def _deep_unknown(self, grid: np.ndarray, info: GridInfo) -> np.ndarray:
+        """Boolean grid of unknown cells that are DEEP in an unmapped void — more
+        than unknown_reach_m from any mapped-free cell. Unknown within that rind
+        of free space is NOT flagged (a manual goto may nose that far into the
+        unmapped). Used only when blocking unknown for goto."""
+        unknown = grid < 0
+        free = grid == 0
+        if not unknown.any():
+            return np.zeros_like(unknown)
+        if not free.any():
+            return unknown          # nothing mapped free → treat all unknown as void
+        reach = max(1, int(round(self.unknown_reach_m / info.resolution)))
+        try:
+            from scipy.ndimage import distance_transform_edt
+            # distance (in cells) from every cell to the nearest mapped-free cell
+            dist_to_free = distance_transform_edt(~free)
+            return unknown & (dist_to_free > reach)
+        except ImportError:
+            # No scipy: fall back to the strict rule (block all unknown). Safe,
+            # just fussier — only hit in a dev env without scipy.
+            return unknown
+
+    def build_blocked(self, grid: np.ndarray, info: GridInfo,
+                      allow_unknown: Optional[bool] = None) -> np.ndarray:
         """Take the raw int8 OccupancyGrid (-1 unknown, 0 free, 100 occupied)
-        and produce a boolean grid where True = "robot cannot stand here"."""
-        occ = grid >= self.OCCUPIED_THRESHOLD
-        if self.UNKNOWN_AS_BLOCKED:
-            occ = occ | (grid < 0)
-        return self._inflate(occ, info)
+        and produce a boolean grid where True = "robot cannot stand here".
+
+        allow_unknown: if True, unknown (-1) cells are traversable (EXPLORE —
+        route toward frontiers). If False, only DEEP unknown is blocked (manual
+        GOTO — reach mapped-free goals across a thin frontier rind, but never
+        plunge across an open void). None falls back to the class default."""
+        block_unknown = (self.UNKNOWN_AS_BLOCKED if allow_unknown is None
+                         else not allow_unknown)
+        occ = self._denoise(grid >= self.OCCUPIED_THRESHOLD)
+        # Inflate the REAL obstacles by the robot radius for wall clearance.
+        blocked = self._inflate(occ, info)
+        if block_unknown:
+            # Add deep unmapped void, un-inflated: the reach rind already provides
+            # the margin, and inflating it would eat back into the passable rind.
+            blocked = blocked | self._deep_unknown(grid, info)
+        return blocked
 
     # ─── A* ───────────────────────────────────────────────────────────────
 
@@ -125,7 +222,8 @@ class GridPathPlanner:
 
     def _astar(self, blocked: np.ndarray,
                start: tuple[int, int],
-               goal: tuple[int, int]) -> Optional[list[tuple[int, int]]]:
+               goal: tuple[int, int],
+               resolution: float) -> Optional[list[tuple[int, int]]]:
         h, w = blocked.shape
         sx, sy = start
         gx, gy = goal
@@ -138,7 +236,7 @@ class GridPathPlanner:
             # within ~1 m and use that — better than failing outright when
             # the user clicked slightly into a wall by accident.
             free = self._nearest_free(blocked, gx, gy,
-                                      max_dist_cells=int(round(1.0 / max(1, 1))))
+                                      max_dist_cells=max(1, int(round(1.0 / resolution))))
             if free is None:
                 return None
             gx, gy = free
@@ -188,6 +286,22 @@ class GridPathPlanner:
                     f_score = tentative + self._heuristic(neighbor, goal)
                     heapq.heappush(open_heap, (f_score, neighbor))
         return None
+
+    @staticmethod
+    def _clear_disc(blocked: np.ndarray, center: tuple[int, int],
+                    radius_m: float, resolution: float) -> None:
+        """Force a disc of cells around `center` to be unblocked, in place.
+        Used to carve out the robot's own footprint so a phantom occupied cell
+        beside the robot can never make the robot's start position unplannable."""
+        r = max(1, int(round(radius_m / resolution)))
+        cx, cy = center
+        h, w = blocked.shape
+        for dy in range(-r, r + 1):
+            for dx in range(-r, r + 1):
+                if dx * dx + dy * dy <= r * r:
+                    x, y = cx + dx, cy + dy
+                    if 0 <= x < w and 0 <= y < h:
+                        blocked[y, x] = False
 
     @staticmethod
     def _nearest_free(blocked: np.ndarray, cx: int, cy: int,
@@ -250,15 +364,27 @@ class GridPathPlanner:
 
     def plan(self, start_world: tuple[float, float],
              goal_world: tuple[float, float],
-             grid: np.ndarray, info: GridInfo
+             grid: np.ndarray, info: GridInfo,
+             allow_unknown: Optional[bool] = None
              ) -> Optional[list[tuple[float, float]]]:
         """Plan a path from start_world to goal_world. Returns a list of
         (x, y) world-frame waypoints from start to goal (inclusive),
-        simplified to line-of-sight corners; None if no path exists."""
-        blocked = self.build_blocked(grid, info)
+        simplified to line-of-sight corners; None if no path exists.
+
+        allow_unknown: True for exploration (plan through unmapped space toward
+        frontiers); False for manual goto (refuse to route through unknown so the
+        robot never drives blind); None uses the class default."""
+        blocked = self.build_blocked(grid, info, allow_unknown=allow_unknown)
         start = self.world_to_cell(*start_world, info)
         goal = self.world_to_cell(*goal_world, info)
-        cell_path = self._astar(blocked, start, goal)
+        # The robot is physically AT `start`, so its own footprint cannot be an
+        # obstacle — yet SLAM often marks a cell occupied right next to the robot
+        # (sensor noise, the robot seeing part of itself, a person alongside it).
+        # That inflates over the robot's cell and boxes the planner in, so EVERY
+        # goal fails with "no path". Clear a robot-radius disc around the start
+        # so planning can always begin from where the robot actually stands.
+        self._clear_disc(blocked, start, self.robot_radius_m, info.resolution)
+        cell_path = self._astar(blocked, start, goal, info.resolution)
         if cell_path is None:
             return None
         corners = self.simplify(cell_path, blocked)

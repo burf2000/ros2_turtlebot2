@@ -230,6 +230,58 @@ The driver translates these to `geometry_msgs/Twist` messages on `/cmd_vel`:
 
 Commands are published continuously at 10Hz until a new command is received.
 
+## Map persistence & localization (SLAM robots)
+
+When the driver runs with `enable_map_relay:=true` on a robot running
+`slam_toolbox`, it advertises the `map_save` capability and can serialize the
+live map to disk for reload in a later session.
+
+**Save a map** — `cmd_map_save` (relayed from the server / UI):
+```json
+{ "type": "cmd_map_save", "payload": { "name": "ground-floor" } }
+```
+The driver calls `/slam_toolbox/serialize_map`, writing
+`<map_storage_dir>/ground-floor.posegraph` + `.data` on the robot
+(`map_storage_dir` defaults to `/home/burf2000/maps`). It replies with a
+`map_save_result` (`ok` + map metadata, or `ok:false` + `error`). The server
+persists the `SavedMap` row only on `ok:true`, so a failed serialize is never
+recorded.
+
+**Load a map (relocalize)** — fully server-driven, no relaunch and no CLI.
+The server pushes the stored map bytes to the driver via `cmd_map_load`:
+```json
+{ "type": "cmd_map_load",
+  "payload": { "name": "ground-floor",
+               "posegraph_b64": "…", "data_b64": "…" } }
+```
+The driver writes `<map_storage_dir>/ground-floor.posegraph`/`.data` to disk,
+then calls `/slam_toolbox/deserialize_map` with `match_type=LOCALIZE_AT_POSE`
+on the **already-running** slam_toolbox node. slam_toolbox loads the graph,
+switches to scan-match-only localization against it, and publishes `map→odom`
+TF. It replies with a `map_load_result` (`ok`, or `ok:false` + `error`).
+
+The driver stays a thin bridge — it never starts, stops, or relaunches SLAM;
+SLAM runs as its own separate process. The driver's existing pose lookup, map
+relay, and goto all work unchanged against the loaded map — including
+`goto`-by-named-location (the server resolves a name to `{x, y, theta}` and
+issues the normal `cmd_goal`).
+
+> **Sensor-geometry note — all current SLAM robots run a 360° LiDAR.**
+> Localization quality scales with the scan's angular FOV, and a 360° LiDAR
+> (LD06/LD19: wheelchair, gwiz, **and the TurtleBot2**, now fitted with a real
+> LD06) gives a full ring to correlate — so the robot can relocalize from
+> anywhere in the mapped space, at any heading, with no need to park near the
+> original mapping start pose. Because `deserialize_map` hands the saved
+> posegraph to the already-running slam_toolbox node (no relaunch, no sensor
+> restart), the live 360° scan immediately overlaps the saved graph and
+> converges. (The old narrow-FOV caveat applied only to the TurtleBot's former
+> Xtion depth→`depthimage_to_laserscan` ~58° "scan" — no longer used.)
+
+**Named locations carry heading.** Each named spot stores `(x, y, theta)`;
+`theta` is the final heading the robot rotates to on arrival. The driver applies
+it on the last segment of the planned path (see `_goto_tick` /
+`GoToController.set_goal`).
+
 ## Testing
 
 ### Test with TurtleSim

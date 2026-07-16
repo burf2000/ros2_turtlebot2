@@ -1,15 +1,37 @@
 /**:
   ros__parameters:
+    # Server configuration
     server_url: "wss://platform.burf.co/ws/robot"
-    local: false
+    local: false  # Set to true for local development
     robot_id: "turtlebot2-01"
     robot_name: "TurtleBot 2"
-    api_key: ""
+    api_key: ""  # Get your API key from https://platform.burf.co/profile
+
+    # ROS2 topic names — TurtleBot2 (Kobuki) values.
+    # Camera is the Astra/Xtion RGB published compressed.
     camera_topic: "/camera/rgb/image_raw/compressed"
     use_compressed: true
+
+    # Odometry: nav_msgs/msg/Odometry
     odom_topic: "/odom"
+
+    # IMU: sensor_msgs/msg/Imu  (Kobuki base IMU)
     imu_topic: "/imu"
+
+    # Command velocity: geometry_msgs/msg/Twist
     cmd_vel_topic: "/cmd_vel"
+
+    # LaserScan: sensor_msgs/msg/LaserScan  (LD06 360° LiDAR)
     scan_topic: "/scan"
-    telemetry_rate: 5.0
-    video_fps: 10
+
+    # Map persistence (SLAM robots only). Directory on the robot where
+    # cmd_map_save writes serialized posegraphs (<name>.posegraph/.data) via the
+    # /slam_toolbox/serialize_map service. To relocalize, cmd_map_load hands the
+    # saved posegraph to the already-running slam_toolbox node via the
+    # /slam_toolbox/deserialize_map service (match_type LOCALIZE_AT_POSE) — no
+    # relaunch and no CLI launch args needed.
+    map_storage_dir: "/home/burf2000/maps"
+
+    # Performance tuning
+    telemetry_rate: 5.0  # Hz - how often to send sensor data
+    video_fps: 10        # Target FPS for video streaming

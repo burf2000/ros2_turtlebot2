@@ -19,6 +19,10 @@
        relays it as a map_update message over the WebSocket. Imported
        lazily so the rest of the driver still loads if it isn't present. -->
   <exec_depend>python3-pil</exec_depend>
+  <!-- slam_toolbox provides the SerializePoseGraph service used by
+       cmd_map_save to write the .posegraph/.data on disk. Imported lazily
+       and only on SLAM robots (enable_map_relay), so it's an exec dep. -->
+  <exec_depend>slam_toolbox</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

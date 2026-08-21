@@ -1,13 +1,27 @@
 """burf.launch.py — TurtleBot2 on the Burf Platform.
 
-Starts:
-  1. image_transport republish: /camera/rgb/image_raw (raw) ->
-     /camera/rgb/image_raw/compressed  (the driver needs the compressed topic;
-     the openni2 camera only publishes raw).
-  2. The burf_platform_driver, wired for this robot (robot_id turtlebot2-01,
-     map relay + goto enabled). Camera/topic config comes from the driver's
-     burf_driver.yaml; robot_id + enable flags are forced here because the
-     driver launch's arg defaults would otherwise override the yaml.
+Starts the burf_platform_driver, wired for this robot (robot_id turtlebot2-01,
+map relay + goto enabled). Camera/topic config comes from the driver's
+burf_driver.yaml; robot_id + enable flags are forced here because the driver
+launch's arg defaults would otherwise override the yaml.
+
+THE REPUBLISHER IS GONE, and that is the point of this file's history.
+
+There used to be an `image_transport republish` here turning raw RGB into a
+compressed topic for the driver. It subscribed to /camera/rgb/image_raw
+UNCONDITIONALLY, and openni2 streams lazily off subscriber count — so the
+republisher alone kept the Xtion streaming full time, for nobody.
+
+That is not a CPU problem. The Nano has ample compute for a camera and a LiDAR;
+measured with the camera off, core 0 was still 74% busy and /scan was perfect.
+It is USB 2.0 BANDWIDTH: the Xtion and the LD06's 12 Mbps FTDI share one 480
+Mbps bus, and a permanently streaming depth camera starved the LiDAR's bulk
+endpoint to the point of corrupting bytes — 0 valid packets/s with 0 CRC
+failures, /scan at 0.28 Hz with 15 second gaps.
+
+So the driver now subscribes to RAW directly and only while a viewer is
+connected. That removes the last unconditional subscriber, and also deletes a
+JPEG encode here and a JPEG decode in the driver that cancelled each other out.
 
 Run SLAM first (slam.launch.py) so the map->base_footprint TF exists for goto.
 
@@ -33,18 +47,6 @@ def generate_launch_description():
 
     manage_slam = LaunchConfiguration('manage_slam')
 
-    republish = Node(
-        package='image_transport',
-        executable='republish',
-        name='rgb_compressed_republish',
-        arguments=['raw', 'compressed'],
-        remappings=[
-            ('in', '/camera/rgb/image_raw'),
-            ('out/compressed', '/camera/rgb/image_raw/compressed'),
-        ],
-        output='screen',
-    )
-
     driver = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_driver, 'launch', 'burf_driver.launch.py')
@@ -56,6 +58,10 @@ def generate_launch_description():
             # When true the driver owns slam_toolbox (starts mapping on boot,
             # relaunches in localization mode on cmd_map_load). Default false.
             'manage_slam': manage_slam,
+            # Raw, not compressed: see the note at the top. The driver
+            # subscribes on demand, so nothing holds the camera open.
+            'camera_topic': '/camera/rgb/image_raw',
+            'use_compressed': 'false',
         }.items()
     )
 
@@ -68,6 +74,5 @@ def generate_launch_description():
                         "mode) without a hand-typed CLI. Don't also run "
                         "slam.launch.py yourself when this is true."
         ),
-        republish,
         driver,
     ])

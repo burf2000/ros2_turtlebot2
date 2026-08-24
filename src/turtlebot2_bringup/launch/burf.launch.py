@@ -32,6 +32,7 @@ def generate_launch_description():
     pkg_driver = get_package_share_directory('burf_platform_driver')
 
     manage_slam = LaunchConfiguration('manage_slam')
+    enable_nav2 = LaunchConfiguration('enable_nav2')
 
     republish = Node(
         package='image_transport',
@@ -56,10 +57,27 @@ def generate_launch_description():
             # When true the driver owns slam_toolbox (starts mapping on boot,
             # relaunches in localization mode on cmd_map_load). Default false.
             'manage_slam': manage_slam,
+            # Stands the driver's 10 Hz /cmd_vel deadman heartbeat down so
+            # Nav2's velocity_smoother can own the base. NEVER set this by
+            # hand — it is driven from /etc/turtlebot2/nav2.enabled by
+            # scripts/start_slam_burf.sh, together with whether Nav2 is
+            # actually launched. True here with Nav2 not running means no
+            # navigation AND no deadman.
+            'enable_nav2': enable_nav2,
         }.items()
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'enable_nav2',
+            default_value='false',
+            description="True when Nav2 is running: the driver stops publishing "
+                        "its 10 Hz /cmd_vel deadman heartbeat and advertises a "
+                        "'nav2' capability to the Platform. Set ONLY via "
+                        "/etc/turtlebot2/nav2.enabled + start_slam_burf.sh, "
+                        "which sets this and launches Nav2 from one variable. "
+                        "true with no Nav2 = no driving and no deadman."
+        ),
         DeclareLaunchArgument(
             'manage_slam',
             default_value='false',

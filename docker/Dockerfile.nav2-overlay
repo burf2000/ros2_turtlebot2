@@ -1,0 +1,77 @@
+# Nav2 overlay — the FAST path for adding Nav2 to an already-good image.
+#
+# Why this exists instead of just rebuilding docker/Dockerfile:
+# a clean build of docker/Dockerfile compiles Kobuki + ECL + ldlidar from
+# source on a Jetson Nano. That is well over an hour, it re-clones five
+# upstream git repos and re-resolves rosdep, and any of those drifting turns a
+# 10-minute change into "the robot has no working image". The Nav2 change is a
+# pure apt layer, so applying it ON TOP of the known-good image gives a
+# byte-for-byte equivalent result in ~5 minutes with no risk to the base.
+#
+# docker/Dockerfile carries the SAME apt layer, so a future clean build lands
+# in the same place. This file is the deployment shortcut, not a fork.
+#
+# Usage on the Jetson (tag the old image first so you can roll back):
+#   docker tag turtlebot2_humble:ubuntu22 turtlebot2_humble:ubuntu22-pre-nav2
+#   docker build -f docker/Dockerfile.nav2-overlay \
+#       -t turtlebot2_humble:ubuntu22 /home/burf2000/turtlebot2
+#   sudo reboot          # start_turtlebot2.sh recreates the container from it
+#
+# Rollback:
+#   docker tag turtlebot2_humble:ubuntu22-pre-nav2 turtlebot2_humble:ubuntu22
+
+FROM turtlebot2_humble:ubuntu22
+
+SHELL ["/bin/bash", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ⚠ ros-humble-diagnostic-updater is NOT redundant here. The base image pins
+# 4.0.6, which ships the Python module and the C++ headers but NO
+# libdiagnostic_updater.so. Nav2's binaries link against that .so, so on 4.0.6
+# every Nav2 node dies at startup with
+#   error while loading shared libraries: libdiagnostic_updater.so
+# lifecycle_manager leaves the stack `unconfigured` and /navigate_to_pose never
+# appears. 4.0.7 restores the shared library. This line forces the upgrade.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-navigation2 \
+    ros-humble-nav2-bringup \
+    ros-humble-diagnostic-updater \
+    && rm -rf /var/lib/apt/lists/*
+
+# Fail the BUILD, not the robot at 3am, if the .so is still missing.
+# NB: `source setup.bash` is REQUIRED before ldd. /opt/ros/humble/lib is not on
+# the default loader path — ROS puts it on LD_LIBRARY_PATH — so a bare `ldd` in
+# a RUN step reports librclcpp.so, librcutils.so etc. as "not found" on a
+# perfectly good install. That false alarm cost a build cycle; don't remove the
+# source line.
+RUN source /opt/ros/humble/setup.bash && set -e && \
+    test -f /opt/ros/humble/lib/libdiagnostic_updater.so && \
+    test -x /opt/ros/humble/lib/nav2_lifecycle_manager/lifecycle_manager && \
+    test -x /opt/ros/humble/lib/nav2_bt_navigator/bt_navigator && \
+    if ldd /opt/ros/humble/lib/nav2_lifecycle_manager/lifecycle_manager | grep -q "not found"; then \
+        echo "FATAL: unresolved shared libs in lifecycle_manager"; exit 1; \
+    fi
+
+# Re-bake turtlebot2_bringup: nav2.launch.py and the enable_nav2 pass-through in
+# burf.launch.py live in this package, and the package is COPYed into the image
+# (not bind-mounted like burf_platform_driver is), so it has to be rebuilt here
+# or the image ships Nav2 binaries with no launch file that knows about them.
+# Cheap: it is an install-only CMake package, ~20 s.
+ENV ROS_WS=/root/turtlebot2_ws
+WORKDIR ${ROS_WS}
+COPY src/turtlebot2_bringup ${ROS_WS}/src/local/turtlebot2_bringup
+RUN source /opt/ros/humble/setup.bash && \
+    source ${ROS_WS}/install/setup.bash && \
+    colcon build --symlink-install --packages-select turtlebot2_bringup \
+        --base-paths ${ROS_WS}/src
+
+# The launch file is useless if nav2_bringup is not importable from it.
+RUN source /opt/ros/humble/setup.bash && \
+    source ${ROS_WS}/install/setup.bash && \
+    python3 -c "from ament_index_python.packages import get_package_share_directory as g; \
+import os; f=os.path.join(g('nav2_bringup'),'launch','navigation_launch.py'); \
+assert os.path.isfile(f), f; \
+import ast; ast.parse(open(os.path.join(g('turtlebot2_bringup'),'launch','nav2.launch.py')).read()); \
+print('nav2.launch.py + nav2_bringup OK')"
+
+CMD ["bash"]

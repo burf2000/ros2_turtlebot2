@@ -91,6 +91,30 @@ RUN cd ${ROS_WS}/src && \
     colcon build --symlink-install --packages-select ldlidar_stl_ros2 \
         --cmake-args -DCMAKE_BUILD_TYPE=Release
 
+# ---------------------------------------------------------------------------
+# Nav2 (autonomous navigation) — BAKED IN, because the container is recreated
+# from this image on every boot (scripts/start_turtlebot2.sh does
+# docker stop/rm/run), so anything apt-installed into a *running* container is
+# lost at the next reboot.
+#
+# ⚠ ros-humble-diagnostic-updater is listed BOTH above and here ON PURPOSE.
+# The version pinned in the older base layer (4.0.6) ships the Python module
+# and the C++ headers but NO libdiagnostic_updater.so. Nav2's binaries link
+# against that .so, so with 4.0.6 every Nav2 node dies at startup with
+#   error while loading shared libraries: libdiagnostic_updater.so
+# lifecycle_manager then leaves the whole stack `unconfigured` and no
+# /navigate_to_pose action ever appears. 4.0.7 restores the shared library.
+# Do NOT drop this line thinking it is a duplicate — it is a forced upgrade.
+#
+# Deliberately a LATE, SEPARATE layer: the Kobuki/ECL source build above takes
+# well over an hour on a Jetson Nano, and adding packages here must not bust
+# its cache.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-navigation2 \
+    ros-humble-nav2-bringup \
+    ros-humble-diagnostic-updater \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy local packages (will be mounted, but copy for standalone use)
 COPY src/turtlebot2_description ${ROS_WS}/src/local/turtlebot2_description
 COPY src/turtlebot2_bringup ${ROS_WS}/src/local/turtlebot2_bringup

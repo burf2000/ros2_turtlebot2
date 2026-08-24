@@ -27,6 +27,85 @@ camera doesn't publish — so we republish raw→compressed. `camera_topic` must
 
 To rebuild the image after changes: `./scripts/run.sh build` (or `docker compose ... build`).
 
+## Nav2 — baked into the image, one switch on/off
+
+Nav2 is **installed in the Docker image**, not apt-installed by hand. That is not
+tidiness: `scripts/start_turtlebot2.sh` does `docker stop` → `docker rm` → `docker run`
+on every boot, so the container is recreated from the image and anything installed into
+a *running* container is gone at the next power cycle.
+
+### Flipping it
+
+```bash
+sudo /home/burf2000/nav2_toggle.sh on      # Nav2 up, driver heartbeat down   (~45 s)
+sudo /home/burf2000/nav2_toggle.sh off     # Nav2 down, driver heartbeat back (~15 s)
+     /home/burf2000/nav2_toggle.sh status  # what is actually true right now
+```
+
+Takes effect immediately — no reboot — and survives reboot, because it writes
+`/etc/turtlebot2/nav2.enabled` on the **host** and `turtlebot2-slam-burf.service`
+re-reads that file on every boot. `slam_toolbox` is deliberately left running across a
+toggle so a map in progress is not thrown away.
+
+### One flag, two consequences — do not split them
+
+`/etc/turtlebot2/nav2.enabled` is the single source of truth. `scripts/start_slam_burf.sh`
+reads it **once** into `$NAV2` and that one variable decides both:
+
+1. whether `nav2.launch.py` runs, and
+2. whether `burf.launch.py` gets `enable_nav2:=true`.
+
+They are two halves of one decision about who owns `/cmd_vel`:
+
+| | Nav2 running | driver `enable_nav2` | result |
+|---|---|---|---|
+| flag `true` | yes | true — heartbeat off | Nav2 owns the base ✅ |
+| flag `false` | no | false — heartbeat on | teleop + deadman ✅ |
+| — | yes | false | two publishers fight; robot stutters; looks like "Nav2 is broken" ❌ |
+| — | no | true | **nothing driving the base AND no deadman** ☠ |
+
+The driver's 10 Hz `/cmd_vel` publish is a **deadman**: it repeats the last command so
+the Kobuki halts if the link to the Platform drops. Nav2's `velocity_smoother` publishes
+`/cmd_vel` at ~20 Hz and owns the base while a goal runs. Hence: never set one without
+the other, and never add a second switch.
+
+Measured on the robot: flag off → `/cmd_vel` 10.0 Hz, no `/navigate_to_pose`.
+Flag on → `/cmd_vel` **0 messages in 20 s**, all seven Nav2 servers `active`,
+`/navigate_to_pose` present.
+
+### What Nav2 launches here (and what it does not)
+
+`src/turtlebot2_bringup/launch/nav2.launch.py` includes nav2_bringup's
+**`navigation_launch.py`**, not `bringup_launch.py` — so **no `map_server` and no AMCL**.
+`slam_toolbox` already owns `/map` and the `map->odom` transform; adding Nav2's would give
+two publishers on `/map` and two things asserting `map->odom`. SLAM localizes, Nav2 drives.
+That is also why there is no `map:=` argument — the map arrives live from slam_toolbox.
+
+### The `libdiagnostic_updater.so` trap
+
+`ros-humble-diagnostic-updater` **4.0.6** ships the Python module and the C++ headers but
+**no `libdiagnostic_updater.so`**. Nav2's binaries link against that `.so`, so on 4.0.6
+every Nav2 node dies instantly with `error while loading shared libraries:
+libdiagnostic_updater.so`, `lifecycle_manager` leaves the whole stack `unconfigured`, and
+no `/navigate_to_pose` action ever appears. **4.0.7 restores the library.** The package is
+therefore listed a second time in the Nav2 apt layer — that is a forced upgrade, not a
+duplicate. Both Dockerfiles assert the `.so` exists at build time so this fails the build
+rather than the robot.
+
+### Rebuilding
+
+`docker/Dockerfile` carries the Nav2 apt layer, but a clean build recompiles Kobuki + ECL
++ ldlidar from source — over an hour on a Nano, re-cloning five upstream repos. For
+deployment use the overlay, which applies the identical layer on top of the known-good
+image in ~5 minutes:
+
+```bash
+docker tag turtlebot2_humble:ubuntu22 turtlebot2_humble:ubuntu22-pre-nav2   # rollback tag
+cd /home/burf2000/turtlebot2
+docker build -f docker/Dockerfile.nav2-overlay -t turtlebot2_humble:ubuntu22 .
+sudo reboot
+```
+
 ## Hardware
 
 - **Compute**: NVIDIA Jetson Nano (4GB)

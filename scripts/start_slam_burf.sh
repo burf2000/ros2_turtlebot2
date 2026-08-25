@@ -63,7 +63,13 @@ NAV2_PATS=(controller_server smoother_server planner_server behavior_server
            lifecycle_manager "ros2 launch turtlebot2_bringup nav2.launch"
            "ros2 launch nav2_bringup")
 DRIVER_PATS=(burf_driver rgb_compressed "ros2 launch turtlebot2_bringup burf.launch")
-SLAM_PATS=(async_slam_toolbox_node odom_tf_bridge
+# SLAM node name substring, NOT the full executable name. Localization mode
+# runs localization_slam_toolbox_node while mapping runs async_slam_toolbox_node;
+# matching only the async one meant a live localization SLAM was invisible to
+# both the teardown below and the "already running" check further down, so a
+# --now run launched a SECOND (mapping) slam_toolbox on top of it. Two SLAMs
+# both publishing /map and map->odom is the "map going crazy" failure.
+SLAM_PATS=(slam_toolbox_node odom_tf_bridge
            "ros2 launch turtlebot2_bringup slam.launch")
 
 # --- read the single source of truth -----------------------------------------
@@ -106,7 +112,7 @@ sleep 2
 # --- SLAM --------------------------------------------------------------------
 # On --now, keep a live slam_toolbox: killing it throws away the map being
 # built, and the toggle is about Nav2, not about the map.
-if docker exec "$CTR" bash -lc "pgrep -f -- \"$(pat async_slam_toolbox_node)\" >/dev/null" >/dev/null 2>&1; then
+if docker exec "$CTR" bash -lc "pgrep -f -- \"$(pat slam_toolbox_node)\" >/dev/null" >/dev/null 2>&1; then
   echo "slam_toolbox already running — left alone"
 else
   echo "launching slam.launch.py"

@@ -87,7 +87,12 @@ bt_navigator:
 controller_server:
   ros__parameters:
     use_sim_time: false
-    controller_frequency: 20.0
+    # 10 Hz, not 20. DWB re-evaluates its whole trajectory set every cycle;
+    # at 20 Hz on a 4-core Jetson Nano that pegged the CPU the moment a goal
+    # was active, which starved the LD06 serial reader and the planner and
+    # presented as "the LiDAR is broken" and "it fails to nav".
+    # At max_vel_x 0.26 m/s, 10 Hz is a control decision every 2.6 cm.
+    controller_frequency: 10.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
@@ -125,7 +130,11 @@ controller_server:
       decel_lim_y: 0.0
       decel_lim_theta: -3.2
       vx_samples: 20
-      vy_samples: 5
+      # 1, not 5. This base is DIFFERENTIAL DRIVE — max_vel_y and min_vel_y
+      # are both 0.0 above, so every lateral sample produces an identical
+      # zero-velocity trajectory. 5 samples meant DWB evaluated 5x the
+      # trajectories to arrive at exactly the same answer.
+      vy_samples: 1
       vtheta_samples: 20
       sim_time: 1.7
       linear_granularity: 0.05

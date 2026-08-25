@@ -5,43 +5,12 @@
 # recreated the container and started the bringup launch.
 #
 # ============================================================================
-# THE NAV2 TOGGLE — ONE FLAG, TWO CONSEQUENCES
-# ============================================================================
-# /etc/turtlebot2/nav2.enabled is the SINGLE SOURCE OF TRUTH for Nav2. It is
-# read ONCE, here, into $NAV2, and that one variable decides BOTH:
-#
-#   1. whether nav2.launch.py runs at all, and
-#   2. whether burf.launch.py is given enable_nav2:=true
-#
-# They must never be set independently, because they are two halves of one
-# decision about who owns /cmd_vel:
-#
-#   * burf_platform_driver publishes a 10 Hz /cmd_vel heartbeat. It is a
-#     DEADMAN — it repeats the last command so the Kobuki halts if the link to
-#     the Platform drops.
-#   * Nav2's velocity_smoother publishes /cmd_vel at ~20 Hz and owns the base
-#     while a goal is running.
-#
-#   Nav2 ON  + heartbeat ON     -> two publishers fight, the robot stutters, and
-#                                  it reads as "Nav2 is broken" when it is
-#                                  really a topic fight.
-#   Nav2 OFF + enable_nav2 true -> THE DANGEROUS ONE: nothing driving the base
-#                                  AND no deadman. Never allow this.
-#
-# So do not add a second switch or an env-var override. Change the file and
-# re-run this script — that is what scripts/nav2_toggle.sh does.
-#
-# Usage:
-#   start_slam_burf.sh          boot mode: wait for bringup, settle 2 min,
-#                               restart SLAM + Nav2 + driver
-#   start_slam_burf.sh --now    immediate: skip the boot settle, and leave an
-#                               already-running slam_toolbox alone so a map in
-#                               progress survives the toggle
-# ============================================================================
-
+# Nav2 has been REMOVED from this robot. It cost 78% of a CPU core sitting
+# idle (measured) while slam_toolbox costs 4.5%, and the built-in A* +
+# GoToController planner does the same job at no measurable cost. The
+# NAV2_PATS kill list below is kept only to reap strays from older boots.
 set -u
 
-NAV2_FLAG=/etc/turtlebot2/nav2.enabled
 CTR=turtlebot2_bringup
 NOW=false
 [ "${1:-}" = "--now" ] && NOW=true
@@ -72,13 +41,6 @@ DRIVER_PATS=(burf_driver rgb_compressed "ros2 launch turtlebot2_bringup burf.lau
 SLAM_PATS=(slam_toolbox_node odom_tf_bridge
            "ros2 launch turtlebot2_bringup slam.launch")
 
-# --- read the single source of truth -----------------------------------------
-NAV2=false
-if [ -f "$NAV2_FLAG" ] && grep -qiE '^[[:space:]]*(1|true|on|yes)[[:space:]]*$' "$NAV2_FLAG"; then
-    NAV2=true
-fi
-echo "nav2 flag ($NAV2_FLAG) => NAV2=$NAV2"
-
 # --- wait for bringup --------------------------------------------------------
 for i in $(seq 1 60); do
   docker exec "$CTR" bash -lc \
@@ -94,8 +56,9 @@ fi
 # --- tear down anything already running --------------------------------------
 # Launches are detached (docker exec -d), so a systemd restart does NOT reap the
 # old ones — clear them here or a restart stacks duplicates. Nav2 is in this
-# list so that flipping the flag to OFF really removes Nav2, instead of leaving
-# it running while the driver quietly re-arms its heartbeat.
+# NAV2_PATS is retained deliberately even though Nav2 is gone: it reaps any
+# stray Nav2 process left over from an older boot, which would otherwise fight
+# the planner for /cmd_vel.
 KILL_PATS=("${NAV2_PATS[@]}" "${DRIVER_PATS[@]}")
 if [ "$NOW" = false ]; then
   KILL_PATS+=("${SLAM_PATS[@]}")   # boot path: nothing worth preserving
@@ -120,17 +83,9 @@ else
   sleep 20
 fi
 
-# --- Nav2 (same $NAV2 that feeds enable_nav2 below) --------------------------
-if [ "$NAV2" = true ]; then
-  echo "launching nav2.launch.py"
-  docker exec -d "$CTR" bash -c "$(ros 'ros2 launch turtlebot2_bringup nav2.launch.py > /tmp/nav2.log 2>&1')"
-  sleep 10
-else
-  echo "nav2 disabled — not launching"
-fi
 
 # --- Burf Platform driver ----------------------------------------------------
-echo "launching burf.launch.py enable_nav2:=$NAV2"
-docker exec -d "$CTR" bash -c "$(ros "ros2 launch turtlebot2_bringup burf.launch.py enable_nav2:=$NAV2 > /tmp/driver.log 2>&1")"
+echo "launching burf.launch.py"
+docker exec -d "$CTR" bash -c "$(ros "ros2 launch turtlebot2_bringup burf.launch.py > /tmp/driver.log 2>&1")"
 
-echo "slam + burf launched (nav2=$NAV2) at $(date)"
+echo "slam + burf launched at $(date)"

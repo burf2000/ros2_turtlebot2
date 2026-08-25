@@ -29,29 +29,6 @@ docker run -d --name turtlebot2_bringup \
 sleep 5
 # Bringup. launch_lidar:=false because the ldlidar_stl_ros2 SDK is unreliable on
 # this box (PL2303/latency) - the real /scan comes from the custom LD06 node below.
-# Nav2 tuning lives on the HOST and is copied in on every boot, because the
-# container is destroyed and recreated from the image above - anything edited
-# inside it is gone at the next power cycle.
-#
-# What is tuned and why: odom->base_footprint is now-stamped by odom_tf_bridge
-# (the Kobuki does not broadcast it), so the TF tree jitters ~1-2s against
-# slam_toolbox map->odom. Nav2 default tolerances (0.3s costmaps, 0.2s
-# controller) abort EVERY goal with "Transform data too old ... Controller
-# patience exceeded", which reads as "Nav2 does not work" rather than as a
-# timing mismatch. transform_tolerance is 1.0 throughout to cover the jitter.
-# SLAM launch also lives on the HOST for the same reason as the Nav2 params:
-# turtlebot2_bringup is baked into the image and is NOT bind-mounted, so an
-# edit inside the container dies at the next boot.
-#
-# What is fixed: localization mode must run localization_slam_toolbox_node, not
-# async_slam_toolbox_node. Only the localization node subscribes to
-# /initialpose, so with the async node "Place robot" published a pose that
-# nothing received and the robot never relocalized.
-if [ -f /home/burf2000/turtlebot2/launch/slam.launch.py ]; then
-    echo "Installing host SLAM launch..."
-    docker cp /home/burf2000/turtlebot2/launch/slam.launch.py turtlebot2_bringup:/root/turtlebot2_ws/src/local/turtlebot2_bringup/launch/slam.launch.py
-fi
-
 if [ -f /home/burf2000/turtlebot2/config/nav2_params.yaml ]; then
     echo "Installing host Nav2 params..."
     docker cp /home/burf2000/turtlebot2/config/nav2_params.yaml turtlebot2_bringup:/root/turtlebot2_ws/src/local/turtlebot2_bringup/config/nav2_params.yaml

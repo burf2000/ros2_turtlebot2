@@ -23,11 +23,40 @@ docker run -d --name turtlebot2_bringup \
     --privileged \
     --network=host \
     -v /dev:/dev \
+    -v /home/burf2000/turtlebot2/src/burf_platform_driver:/root/turtlebot2_ws/src/local/burf_platform_driver \
     turtlebot2_humble:ubuntu22 \
     bash -c "sleep infinity"
 sleep 5
 # Bringup. launch_lidar:=false because the ldlidar_stl_ros2 SDK is unreliable on
 # this box (PL2303/latency) - the real /scan comes from the custom LD06 node below.
+# Nav2 tuning lives on the HOST and is copied in on every boot, because the
+# container is destroyed and recreated from the image above - anything edited
+# inside it is gone at the next power cycle.
+#
+# What is tuned and why: odom->base_footprint is now-stamped by odom_tf_bridge
+# (the Kobuki does not broadcast it), so the TF tree jitters ~1-2s against
+# slam_toolbox map->odom. Nav2 default tolerances (0.3s costmaps, 0.2s
+# controller) abort EVERY goal with "Transform data too old ... Controller
+# patience exceeded", which reads as "Nav2 does not work" rather than as a
+# timing mismatch. transform_tolerance is 1.0 throughout to cover the jitter.
+# SLAM launch also lives on the HOST for the same reason as the Nav2 params:
+# turtlebot2_bringup is baked into the image and is NOT bind-mounted, so an
+# edit inside the container dies at the next boot.
+#
+# What is fixed: localization mode must run localization_slam_toolbox_node, not
+# async_slam_toolbox_node. Only the localization node subscribes to
+# /initialpose, so with the async node "Place robot" published a pose that
+# nothing received and the robot never relocalized.
+if [ -f /home/burf2000/turtlebot2/launch/slam.launch.py ]; then
+    echo "Installing host SLAM launch..."
+    docker cp /home/burf2000/turtlebot2/launch/slam.launch.py turtlebot2_bringup:/root/turtlebot2_ws/src/local/turtlebot2_bringup/launch/slam.launch.py
+fi
+
+if [ -f /home/burf2000/turtlebot2/config/nav2_params.yaml ]; then
+    echo "Installing host Nav2 params..."
+    docker cp /home/burf2000/turtlebot2/config/nav2_params.yaml turtlebot2_bringup:/root/turtlebot2_ws/src/local/turtlebot2_bringup/config/nav2_params.yaml
+fi
+
 echo "Starting TurtleBot2 launch..."
 docker exec -d turtlebot2_bringup bash -c \
     "source /opt/ros/humble/setup.bash && \
@@ -35,20 +64,10 @@ docker exec -d turtlebot2_bringup bash -c \
      ros2 launch turtlebot2_bringup turtlebot2.launch.py launch_robot_state_publisher:=true launch_lidar:=false"
 sleep 8
 # Custom LD06 -> /scan node (raw FTDI read; see ld06_scan_node.py header).
-# Prefer the node BAKED into the image (installed via CMakeLists to
-# lib/turtlebot2_bringup); fall back to the host copy if the image predates it.
 echo "Starting custom LD06 LiDAR node..."
-if docker exec turtlebot2_bringup bash -c \
-    "source /opt/ros/humble/setup.bash && source /root/turtlebot2_ws/install/setup.bash && ros2 pkg executables turtlebot2_bringup 2>/dev/null | grep -q ld06_scan_node.py"; then
-    echo "  using baked-in node (ros2 run)"
-    docker exec -d turtlebot2_bringup bash -c \
-        "source /opt/ros/humble/setup.bash && source /root/turtlebot2_ws/install/setup.bash && ros2 run turtlebot2_bringup ld06_scan_node.py > /tmp/ld06.log 2>&1"
-else
-    echo "  baked-in node not found, using host copy"
-    docker cp /home/burf2000/ld06_scan_node.py turtlebot2_bringup:/tmp/ld06_scan_node.py
-    docker exec -d turtlebot2_bringup bash -c \
-        "source /opt/ros/humble/setup.bash && python3 /tmp/ld06_scan_node.py > /tmp/ld06.log 2>&1"
-fi
+docker cp /home/burf2000/ld06_scan_node.py turtlebot2_bringup:/tmp/ld06_scan_node.py
+docker exec -d turtlebot2_bringup bash -c \
+    "source /opt/ros/humble/setup.bash && python3 /tmp/ld06_scan_node.py > /tmp/ld06.log 2>&1"
 # Static mount TF base_footprint -> lidar_link. The launch's own lidar_static_tf is
 # gated on launch_lidar (=false here), so publish it here or slam_toolbox drops
 # every scan ("message filter queue full") and no map builds.
@@ -56,4 +75,17 @@ fi
 echo "Publishing LD06 static TF (base_footprint -> lidar_link)..."
 docker exec -d turtlebot2_bringup bash -c \
     "source /opt/ros/humble/setup.bash && ros2 run tf2_ros static_transform_publisher --x 0 --y 0 --z 0.35 --yaw 0 --pitch 0 --roll 0 --frame-id base_footprint --child-frame-id lidar_link > /tmp/lidartf.log 2>&1"
+# Kobuki auto-docking. The package was built in the image all along but never
+# launched, so /auto_docking_action did not exist and the robot could not put
+# itself on charge. It is a plain action server: idle until the driver sends it
+# a goal, so running it always costs nothing.
+# THE REMAP IS LOAD-BEARING. kobuki_auto_docking publishes its motor commands
+# to /commands/velocity (the ROS1 name), but kobuki_node subscribes to /cmd_vel.
+# Without -r the docking state machine runs perfectly and reports ALIGNED_NEAR
+# while the robot never moves, because its velocity commands go to a topic with
+# no subscriber. Symptom is "docking never completes and never errors".
+echo "Starting Kobuki auto-docking action server..."
+docker exec -d turtlebot2_bringup bash -c \
+    "source /opt/ros/humble/setup.bash && source /root/turtlebot2_ws/install/setup.bash && exec ros2 run kobuki_auto_docking kobuki_auto_docking_node --ros-args -r /commands/velocity:=/cmd_vel > /tmp/autodock.log 2>&1"
+
 echo "TurtleBot2 started successfully"

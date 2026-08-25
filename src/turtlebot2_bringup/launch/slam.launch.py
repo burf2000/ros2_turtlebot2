@@ -73,7 +73,22 @@ def _launch_setup(context, *args, **kwargs):
     if pkg_slam_toolbox:
         nodes.append(IncludeLaunchDescription(
             PythonLaunchDescriptionSource([
-                pkg_slam_toolbox, '/launch/online_async_launch.py'
+                # MODE PICKS THE NODE, not just the params file.
+                #
+                # online_async_launch.py runs async_slam_toolbox_node, which has
+                # NO /initialpose subscriber. Running it in "localization mode"
+                # with only a different params file meant the driver published
+                # /initialpose on every "Place robot" and nothing was listening
+                # (Publisher count 1, Subscription count 0), so the robot never
+                # relocalized and the button silently did nothing.
+                #
+                # localization_launch.py runs localization_slam_toolbox_node,
+                # which is the one that subscribes to /initialpose. Both take
+                # the same use_sim_time + slam_params_file arguments and both
+                # name the node slam_toolbox, so this is a drop-in swap.
+                pkg_slam_toolbox,
+                ('/launch/localization_launch.py' if slam_mode == 'localization'
+                 else '/launch/online_async_launch.py')
             ]),
             launch_arguments={
                 'use_sim_time': use_sim_time,

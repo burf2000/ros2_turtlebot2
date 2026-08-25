@@ -130,7 +130,8 @@ controller_server:
       sim_time: 1.7
       linear_granularity: 0.05
       angular_granularity: 0.025
-      transform_tolerance: 0.2
+      # raised for this robot: odom->base_footprint is now-stamped by odom_tf_bridge (the Kobuki does not broadcast it), so the TF tree jitters ~1-2s against slam_toolbox map->odom. Nav2 default tolerances abort every goal with "Transform data too old".
+      transform_tolerance: 1.0
       xy_goal_tolerance: 0.25
       trans_stopped_velocity: 0.25
       short_circuit_trajectory_evaluation: true
@@ -150,6 +151,8 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
+      # raised for this robot: odom->base_footprint is now-stamped by odom_tf_bridge (the Kobuki does not broadcast it), so the TF tree jitters ~1-2s against slam_toolbox map->odom. Nav2 default tolerances abort every goal with "Transform data too old".
+      transform_tolerance: 1.0
       update_frequency: 5.0
       publish_frequency: 2.0
       global_frame: odom
@@ -192,6 +195,8 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
+      # raised for this robot: odom->base_footprint is now-stamped by odom_tf_bridge (the Kobuki does not broadcast it), so the TF tree jitters ~1-2s against slam_toolbox map->odom. Nav2 default tolerances abort every goal with "Transform data too old".
+      transform_tolerance: 1.0
       update_frequency: 1.0
       publish_frequency: 1.0
       global_frame: map
@@ -249,7 +254,8 @@ behavior_server:
       plugin: nav2_behaviors/Wait
     global_frame: odom
     robot_base_frame: base_footprint
-    transform_tolerance: 0.1
+    # raised for this robot: odom->base_footprint is now-stamped by odom_tf_bridge (the Kobuki does not broadcast it), so the TF tree jitters ~1-2s against slam_toolbox map->odom. Nav2 default tolerances abort every goal with "Transform data too old".
+    transform_tolerance: 1.0
     use_sim_time: false
     simulate_ahead_time: 2.0
     max_rotational_vel: 1.0
